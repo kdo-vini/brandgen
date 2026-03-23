@@ -50,8 +50,11 @@ const imageStyleDescriptions: Record<string, string> = {
 
 const aspectRatios = ["1:1", "3:4", "4:3", "9:16", "16:9", "1:4", "1:8", "4:1", "8:1"];
 const imageModels = [
-  { id: 'gemini-3.1-flash-image-preview', name: 'Nano Banana 2 (Flash)' },
-  { id: 'gemini-3-pro-image-preview', name: 'Nano Banana Pro' }
+  { id: 'imagen-4.0-ultra-generate-001', name: '⭐ Imagen 4 Ultra (Melhor qualidade)', type: 'imagen' },
+  { id: 'imagen-4.0-generate-001', name: 'Imagen 4 (Alta qualidade)', type: 'imagen' },
+  { id: 'imagen-4.0-fast-generate-001', name: 'Imagen 4 Fast (Rápido)', type: 'imagen' },
+  { id: 'gemini-3-pro-image-preview', name: 'Nano Banana Pro (Thinking)', type: 'nanoBanana' },
+  { id: 'gemini-3.1-flash-image-preview', name: 'Nano Banana 2 Flash', type: 'nanoBanana' }
 ];
 const imageSizes = ["1K", "2K", "4K"];
 
@@ -63,7 +66,7 @@ export default function BrandDetail({ brand, onBack, onEdit }: Props) {
   const [format, setFormat] = useState('Feed quadrado (1080x1080)');
   const [imageStyle, setImageStyle] = useState('Post Profissional (Canva-style)');
   const [aspectRatio, setAspectRatio] = useState('1:1');
-  const [imageModel, setImageModel] = useState('gemini-3.1-flash-image-preview');
+  const [imageModel, setImageModel] = useState('imagen-4.0-ultra-generate-001');
   const [imageSize, setImageSize] = useState('1K');
 
   const [generatedContent, setGeneratedContent] = useState<GeneratedContent | null>(null);
@@ -239,24 +242,48 @@ Retorne um JSON com:
 
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
-      const response = await ai.models.generateContent({
-        model: imageModel,
-        contents: {
-          parts: [{ text: generatedContent.image_prompt }]
-        },
-        config: {
-          imageConfig: {
+      const selectedModel = imageModels.find(m => m.id === imageModel);
+      const isImagen = selectedModel?.type === 'imagen';
+
+      if (isImagen) {
+        // Imagen API uses generateImages()
+        const response = await ai.models.generateImages({
+          model: imageModel,
+          prompt: generatedContent.image_prompt,
+          config: {
+            numberOfImages: 1,
             aspectRatio: aspectRatio as any,
-            imageSize: imageSize as any
+          },
+        });
+
+        if (response.generatedImages && response.generatedImages.length > 0) {
+          const imgBytes = response.generatedImages[0].image?.imageBytes;
+          if (imgBytes) {
+            const imageUrl = `data:image/png;base64,${imgBytes}`;
+            setGeneratedImageUrl(imageUrl);
           }
         }
-      });
+      } else {
+        // Nano Banana API uses generateContent()
+        const response = await ai.models.generateContent({
+          model: imageModel,
+          contents: {
+            parts: [{ text: generatedContent.image_prompt }]
+          },
+          config: {
+            imageConfig: {
+              aspectRatio: aspectRatio as any,
+              imageSize: imageSize as any
+            }
+          }
+        });
 
-      for (const part of response.candidates?.[0]?.content?.parts || []) {
-        if (part.inlineData) {
-          const imageUrl = `data:image/png;base64,${part.inlineData.data}`;
-          setGeneratedImageUrl(imageUrl);
-          break;
+        for (const part of response.candidates?.[0]?.content?.parts || []) {
+          if (part.inlineData) {
+            const imageUrl = `data:image/png;base64,${part.inlineData.data}`;
+            setGeneratedImageUrl(imageUrl);
+            break;
+          }
         }
       }
     } catch (err: any) {
