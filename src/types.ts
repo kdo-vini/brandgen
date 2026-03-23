@@ -86,4 +86,4 @@ export type GeminiAnalysis = {
   emoji_style: string;
 };
 
-export type AppView = 'list' | 'create' | 'edit' | 'detail';
+export type AppView = 'landing' | 'list' | 'create' | 'edit' | 'detail';

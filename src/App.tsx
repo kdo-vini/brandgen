@@ -10,6 +10,7 @@ import type { Brand, AppView } from './types';
 import BrandList from './components/BrandList';
 import BrandForm from './components/BrandForm';
 import BrandDetail from './components/BrandDetail';
+import LandingPage from './components/LandingPage';
 import ToastContainer from './components/Toast';
 import { useToast } from './hooks/useToast';
 
@@ -33,7 +34,7 @@ const pageTransition = { duration: 0.2, ease: 'easeOut' as const };
 
 export default function App() {
   const [hasApiKey, setHasApiKey] = useState<boolean>(true);
-  const [view, setView] = useState<AppView>('list');
+  const [view, setView] = useState<AppView>('landing');
   const [selectedBrand, setSelectedBrand] = useState<Brand | null>(null);
   const [onboardingUrl, setOnboardingUrl] = useState<string>('');
   const { toasts, addToast, removeToast } = useToast();
@@ -89,28 +90,43 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#FFF8F0] text-neutral-900 font-sans">
-      {/* Top Nav */}
-      <header className="bg-white border-b border-neutral-200 px-6 py-4 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div
-            className="flex items-center gap-2 cursor-pointer"
-            onClick={() => { setView('list'); setSelectedBrand(null); }}
-          >
-            <div className="w-8 h-8 rounded-lg bg-[#FF6B35] flex items-center justify-center text-white font-bold">
-              C
+    <div className={`min-h-screen text-neutral-900 font-sans ${view === 'landing' ? 'bg-[#FFF8F0]' : 'bg-[#FFF8F0]'}`}>
+      {/* Top Nav - Hidden on Landing Page */}
+      {view !== 'landing' && (
+        <header className="bg-white border-b border-neutral-200 px-6 py-4 sticky top-0 z-10">
+          <div className="max-w-7xl mx-auto flex items-center justify-between">
+            <div
+              className="flex items-center gap-2 cursor-pointer"
+              onClick={() => { setView('list'); setSelectedBrand(null); }}
+            >
+              <div className="w-8 h-8 rounded-lg bg-[#FF6B35] flex items-center justify-center text-white font-bold">
+                C
+              </div>
+              <h1 className="text-xl font-bold tracking-tight font-display">Criaê</h1>
             </div>
-            <h1 className="text-xl font-bold tracking-tight font-display">Criaê</h1>
+            <div className="text-xs text-neutral-400">
+              O seu marketeiro pessoal ✦
+            </div>
           </div>
-          <div className="text-xs text-neutral-400">
-            O seu marketeiro pessoal ✦
-          </div>
-        </div>
-      </header>
+        </header>
+      )}
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-6 py-8">
+      <main className={view === 'landing' ? '' : 'max-w-7xl mx-auto px-6 py-8'}>
         <AnimatePresence mode="wait">
+          {view === 'landing' && (
+            <motion.div
+              key="landing"
+              variants={pageVariants}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+              transition={pageTransition}
+            >
+              <LandingPage onStart={() => setView('list')} />
+            </motion.div>
+          )}
+
           {view === 'list' && (
             <motion.div
               key="list"
