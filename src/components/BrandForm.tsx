@@ -91,8 +91,15 @@ export default function BrandForm({ user, existingBrand, initialUrl, onSaved, on
       });
 
       if (!analyzeRes.ok) {
-        const errData = await analyzeRes.json();
-        throw new Error(errData.error || 'Ih, travou! Tenta de novo? 🔄');
+        let errorMsg = 'Ih, travou na análise! Tenta de novo? 🔄';
+        try {
+          const errData = await analyzeRes.json();
+          errorMsg = errData.error || errorMsg;
+        } catch (e) {
+          // Fallback se não for JSON
+          console.error('Erro ao ler resposta de erro:', e);
+        }
+        throw new Error(errorMsg);
       }
 
       const analysis: GeminiAnalysis = await analyzeRes.json();
