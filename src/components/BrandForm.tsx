@@ -4,6 +4,7 @@ import { motion } from 'motion/react';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import type { Brand, ScrapeResult, GeminiAnalysis } from '../types';
+import { PRODUCT_TYPE_LABELS, PRODUCT_TYPES, normalizeProductType } from '../lib/brandMeta';
 
 type Props = {
   user: User;
@@ -70,14 +71,18 @@ export default function BrandForm({ user, existingBrand, initialUrl, onSaved, on
   const [targetAudience, setTargetAudience] = useState(existingBrand?.target_audience || '');
   const [valueProposition, setValueProposition] = useState(existingBrand?.value_proposition || '');
   const [keyPain, setKeyPain] = useState(existingBrand?.key_pain || '');
-  const [productType, setProductType] = useState(existingBrand?.product_type || 'saas');
+  const [productType, setProductType] = useState(normalizeProductType(existingBrand?.product_type || 'saas'));
   const [language, setLanguage] = useState(existingBrand?.language || 'pt-BR');
   const [emojiStyle, setEmojiStyle] = useState(existingBrand?.emoji_style || 'moderate');
   const [description, setDescription] = useState(existingBrand?.description || '');
   const [keywords, setKeywords] = useState(existingBrand?.keywords?.join(', ') || '');
+  const [headlines, setHeadlines] = useState<string | null>(existingBrand?.headlines || null);
+  const [bodyText, setBodyText] = useState<string | null>(existingBrand?.body_text || null);
+  const [rawScanData, setRawScanData] = useState<Record<string, unknown> | null>(existingBrand?.raw_scan_data || null);
 
-  const handleScan = async (urlOverride?: string) => {
-    const targetUrl = urlOverride ?? url;
+  const handleScan = async (urlOverride?: string | null) => {
+    const rawTargetUrl = typeof urlOverride === 'string' ? urlOverride : url;
+    const targetUrl = rawTargetUrl.trim();
     if (!targetUrl) {
       onError?.('Opa, cola uma URL aí primeiro! 👆');
       return;
@@ -143,10 +148,13 @@ export default function BrandForm({ user, existingBrand, initialUrl, onSaved, on
       setTargetAudience(analysis.target_audience || '');
       setValueProposition(analysis.value_proposition || '');
       setKeyPain(analysis.key_pain || '');
-      setProductType(analysis.product_type || 'saas');
+      setProductType(normalizeProductType(analysis.product_type));
       setLanguage(analysis.language || 'pt-BR');
       setEmojiStyle(analysis.emoji_style || 'moderate');
       setDescription(scraped.description || '');
+      setHeadlines(scraped.headlines || null);
+      setBodyText(scraped.body_text || null);
+      setRawScanData(scraped);
 
       await new Promise(resolve => setTimeout(resolve, 500));
 
@@ -187,14 +195,14 @@ export default function BrandForm({ user, existingBrand, initialUrl, onSaved, on
       target_audience: targetAudience || null,
       value_proposition: valueProposition || null,
       key_pain: keyPain || null,
-      product_type: productType,
+      product_type: normalizeProductType(productType),
       language,
       emoji_style: emojiStyle,
       keywords: keywords.split(',').map(k => k.trim()).filter(Boolean),
       description: description || null,
-      headlines: null as string | null,
-      body_text: null as string | null,
-      raw_scan_data: null as Record<string, unknown> | null,
+      headlines,
+      body_text: bodyText,
+      raw_scan_data: rawScanData,
       updated_at: new Date().toISOString(),
     };
 
@@ -261,7 +269,7 @@ export default function BrandForm({ user, existingBrand, initialUrl, onSaved, on
           </div>
           <motion.button
             whileTap={{ scale: 0.97 }}
-            onClick={handleScan}
+            onClick={() => { void handleScan(); }}
             disabled={!!loadingStep || !url}
             className="inline-flex items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-[#FF6B35] hover:bg-[#E55A28] disabled:opacity-50 transition-colors"
           >
@@ -314,7 +322,7 @@ export default function BrandForm({ user, existingBrand, initialUrl, onSaved, on
               onChange={(e) => setProductType(e.target.value)}
               className="block w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-[#FF6B35] focus:border-[#FF6B35] sm:text-sm"
             >
-              {productTypes.map(t => <option key={t} value={t}>{productTypeLabels[t]}</option>)}
+              {PRODUCT_TYPES.map(t => <option key={t} value={t}>{PRODUCT_TYPE_LABELS[t]}</option>)}
             </select>
           </div>
 

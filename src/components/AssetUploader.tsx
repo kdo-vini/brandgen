@@ -14,6 +14,7 @@ export default function AssetUploader({ user, brandId }: Props) {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [uploadType, setUploadType] = useState<BrandAsset['type']>('product_photo');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -65,7 +66,7 @@ export default function AssetUploader({ user, brandId }: Props) {
         .insert({
           user_id: user.id,
           brand_id: brandId,
-          type: 'product_photo',
+          type: uploadType,
           url: urlData.publicUrl,
           filename: file.name,
           metadata: { size: file.size, type: file.type, path: filePath }
@@ -103,22 +104,33 @@ export default function AssetUploader({ user, brandId }: Props) {
     <div>
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold text-neutral-700">Fotos do produto 📸</h3>
-        <label className="inline-flex items-center px-3 py-1.5 border border-neutral-300 rounded-lg text-xs font-medium text-neutral-700 bg-white hover:bg-neutral-50 cursor-pointer transition-colors">
-          {uploading ? (
-            <><Loader2 className="animate-spin mr-1.5 h-3.5 w-3.5" /> Enviando...</>
-          ) : (
-            <><Upload className="mr-1.5 h-3.5 w-3.5" /> Enviar foto</>
-          )}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            multiple
-            onChange={handleUpload}
-            disabled={uploading}
-            className="hidden"
-          />
-        </label>
+        <div className="flex items-center gap-2">
+          <select
+            value={uploadType}
+            onChange={(e) => setUploadType(e.target.value as BrandAsset['type'])}
+            className="rounded-lg border border-neutral-300 bg-white px-2.5 py-1.5 text-xs font-medium text-neutral-600 focus:border-[#FF6B35] focus:outline-none focus:ring-[#FF6B35]"
+          >
+            <option value="product_photo">Produto</option>
+            <option value="reference">Referencia</option>
+            <option value="logo">Logo</option>
+          </select>
+          <label className="inline-flex items-center px-3 py-1.5 border border-neutral-300 rounded-lg text-xs font-medium text-neutral-700 bg-white hover:bg-neutral-50 cursor-pointer transition-colors">
+            {uploading ? (
+              <><Loader2 className="animate-spin mr-1.5 h-3.5 w-3.5" /> Enviando...</>
+            ) : (
+              <><Upload className="mr-1.5 h-3.5 w-3.5" /> Enviar foto</>
+            )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={handleUpload}
+              disabled={uploading}
+              className="hidden"
+            />
+          </label>
+        </div>
       </div>
 
       {loading ? (
@@ -155,7 +167,10 @@ export default function AssetUploader({ user, brandId }: Props) {
                 )}
               </button>
               {asset.filename && (
-                <p className="text-xs text-neutral-500 px-2 py-1 truncate">{asset.filename}</p>
+                <div className="px-2 py-1">
+                  <p className="truncate text-xs text-neutral-500">{asset.filename}</p>
+                  <p className="truncate text-[10px] uppercase tracking-wide text-neutral-300">{asset.type}</p>
+                </div>
               )}
             </div>
           ))}
