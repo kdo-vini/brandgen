@@ -1,13 +1,15 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Upload, Trash2, Loader2, Image as ImageIcon } from 'lucide-react';
+import type { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import type { BrandAsset } from '../types';
 
 type Props = {
+  user: User;
   brandId: string;
 };
 
-export default function AssetUploader({ brandId }: Props) {
+export default function AssetUploader({ user, brandId }: Props) {
   const [assets, setAssets] = useState<BrandAsset[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -40,7 +42,7 @@ export default function AssetUploader({ brandId }: Props) {
 
     for (const file of Array.from(files) as File[]) {
       const fileExt = file.name.split('.').pop();
-      const filePath = `${brandId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
+      const filePath = `${user.id}/${brandId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
 
       // Upload to Supabase Storage
       const { error: uploadError } = await supabase.storage
@@ -61,6 +63,7 @@ export default function AssetUploader({ brandId }: Props) {
       const { data: assetData, error: dbError } = await supabase
         .from('brand_assets')
         .insert({
+          user_id: user.id,
           brand_id: brandId,
           type: 'product_photo',
           url: urlData.publicUrl,

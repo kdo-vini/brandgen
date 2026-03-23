@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Loader2, Wand2, ArrowLeft, Copy, Check, Download, Palette, Image as ImageIcon, Type as TypeIcon, RefreshCw, Pencil, Package, Clock, Hash } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import type { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import type { Brand, GeneratedContent, BrandAsset } from '../types';
 import AssetUploader from './AssetUploader';
@@ -8,6 +9,7 @@ import PostHistory from './PostHistory';
 import TypographicCard from './TypographicCard';
 
 type Props = {
+  user: User;
   brand: Brand;
   onBack: () => void;
   onEdit: (brand: Brand) => void;
@@ -154,7 +156,7 @@ function EditableField({ label, value, isEditing, isRegenerating, onEdit, onSave
   );
 }
 
-export default function BrandDetail({ brand, onBack, onEdit, onError, onSuccess }: Props) {
+export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSuccess }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('generate');
 
   // Generator state
@@ -267,6 +269,7 @@ export default function BrandDetail({ brand, onBack, onEdit, onError, onSuccess 
       const { data: insertedPost } = await supabase
         .from('generated_posts')
         .insert({
+          user_id: user.id,
           brand_id: brand.id,
           post_type: postType,
           format,
@@ -332,7 +335,7 @@ export default function BrandDetail({ brand, onBack, onEdit, onError, onSuccess 
           for (let i = 0; i < byteChars.length; i++) byteNums[i] = byteChars.charCodeAt(i);
           const blob = new Blob([new Uint8Array(byteNums)], { type: 'image/png' });
 
-          const fileName = `post-images/${brand.id}/${Date.now()}.png`;
+          const fileName = `${user.id}/post-images/${brand.id}/${Date.now()}.png`;
           const { error: uploadError } = await supabase.storage
             .from('brand-assets')
             .upload(fileName, blob, { contentType: 'image/png', upsert: false });
@@ -844,7 +847,7 @@ export default function BrandDetail({ brand, onBack, onEdit, onError, onSuccess 
 
       {activeTab === 'assets' && (
         <div className="bg-white rounded-xl border border-neutral-200 p-6">
-          <AssetUploader brandId={brand.id} />
+          <AssetUploader user={user} brandId={brand.id} />
         </div>
       )}
 

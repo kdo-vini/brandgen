@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Loader2, Wand2, Link as LinkIcon, Save, ArrowLeft } from 'lucide-react';
 import { motion } from 'motion/react';
+import type { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import type { Brand, ScrapeResult, GeminiAnalysis } from '../types';
 
 type Props = {
+  user: User;
   existingBrand?: Brand | null;
   initialUrl?: string;
   onSaved: (brand: Brand) => void;
@@ -25,7 +27,7 @@ const loadingSteps = [
   'Quase lá, só um instante... ✨',
 ];
 
-export default function BrandForm({ existingBrand, initialUrl, onSaved, onCancel, onError, onSuccess }: Props) {
+export default function BrandForm({ user, existingBrand, initialUrl, onSaved, onCancel, onError, onSuccess }: Props) {
   const [url, setUrl] = useState(existingBrand?.url || initialUrl || '');
   const [loadingStep, setLoadingStep] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -138,6 +140,7 @@ export default function BrandForm({ existingBrand, initialUrl, onSaved, onCancel
     setIsSaving(true);
 
     const brandData = {
+      user_id: user.id,
       name: name.trim(),
       url: url || null,
       instagram_handle: instagramHandle || null,

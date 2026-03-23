@@ -4,13 +4,18 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Key } from 'lucide-react';
+import { Key, LogOut, Loader2, UserCircle } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
+import type { User } from '@supabase/supabase-js';
 import type { Brand, AppView } from './types';
+import { supabase } from './lib/supabase';
 import BrandList from './components/BrandList';
 import BrandForm from './components/BrandForm';
 import BrandDetail from './components/BrandDetail';
 import LandingPage from './components/LandingPage';
+import AuthPage from './components/AuthPage';
+import ProfilePage from './components/ProfilePage';
+import ResetPasswordPage from './components/ResetPasswordPage';
 import ToastContainer from './components/Toast';
 import { useToast } from './hooks/useToast';
 
@@ -37,6 +42,8 @@ export default function App() {
   const [view, setView] = useState<AppView>('landing');
   const [selectedBrand, setSelectedBrand] = useState<Brand | null>(null);
   const [onboardingUrl, setOnboardingUrl] = useState<string>('');
+  const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const { toasts, addToast, removeToast } = useToast();
 
   useEffect(() => {
@@ -49,12 +56,55 @@ export default function App() {
     checkApiKey();
   }, []);
 
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      const resolvedUser = session?.user ?? null;
+      setUser(resolvedUser);
+      if (resolvedUser) setView('list');
+      setAuthLoading(false);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      setUser(session?.user ?? null);
+      if (event === 'SIGNED_IN') setView('list');
+      if (event === 'SIGNED_OUT') setView('landing');
+      if (event === 'PASSWORD_RECOVERY') setView('reset-password');
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
   const handleSelectKey = async () => {
     if (window.aistudio?.openSelectKey) {
       await window.aistudio.openSelectKey();
       setHasApiKey(true);
     }
   };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setView('landing');
+    setSelectedBrand(null);
+    addToast('Até logo! Volta logo 👋', 'success');
+  };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-[#FFF8F0] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-[#FF6B35] flex items-center justify-center text-white font-bold text-xl">C</div>
+          <Loader2 className="h-5 w-5 animate-spin text-[#FF8C5A]" />
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <>
+        <AuthPage onError={(msg) => addToast(msg, 'error')} onSuccess={(msg) => addToast(msg, 'success')} />
+        <ToastContainer toasts={toasts} onRemove={removeToast} />
+      </>
+    );
+  }
 
   if (!hasApiKey) {
     return (
@@ -90,9 +140,9 @@ export default function App() {
   }
 
   return (
-    <div className={`min-h-screen text-neutral-900 font-sans ${view === 'landing' ? 'bg-[#FFF8F0]' : 'bg-[#FFF8F0]'}`}>
-      {/* Top Nav - Hidden on Landing Page */}
-      {view !== 'landing' && (
+    <div className="min-h-screen text-neutral-900 font-sans bg-[#FFF8F0]">
+      {/* Top Nav - Hidden on Landing Page and Reset Password */}
+      {view !== 'landing' && view !== 'reset-password' && (
         <header className="bg-white border-b border-neutral-200 px-6 py-4 sticky top-0 z-10">
           <div className="max-w-7xl mx-auto flex items-center justify-between">
             <div
@@ -104,15 +154,34 @@ export default function App() {
               </div>
               <h1 className="text-xl font-bold tracking-tight font-display">Criaê</h1>
             </div>
-            <div className="text-xs text-neutral-400">
-              O seu marketeiro pessoal ✦
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-neutral-400 hidden sm:block truncate max-w-[160px]">{user.email}</span>
+              <button
+                onClick={() => setView('profile')}
+                className={`inline-flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg transition-colors ${
+                  view === 'profile'
+                    ? 'text-[#FF6B35] bg-[#FFF1EB]'
+                    : 'text-neutral-500 hover:text-neutral-800 hover:bg-neutral-100'
+                }`}
+                title="Meu perfil"
+              >
+                <UserCircle className="h-4 w-4" />
+                <span className="hidden sm:inline">Perfil</span>
+              </button>
+              <button
+                onClick={handleLogout}
+                className="inline-flex items-center gap-1.5 text-sm text-neutral-500 hover:text-neutral-800 px-3 py-1.5 rounded-lg hover:bg-neutral-100 transition-colors"
+              >
+                <LogOut className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Sair</span>
+              </button>
             </div>
           </div>
         </header>
       )}
 
       {/* Main Content */}
-      <main className={view === 'landing' ? '' : 'max-w-7xl mx-auto px-6 py-8'}>
+      <main className={view === 'landing' || view === 'reset-password' ? '' : 'max-w-7xl mx-auto px-6 py-8'}>
         <AnimatePresence mode="wait">
           {view === 'landing' && (
             <motion.div
@@ -165,6 +234,7 @@ export default function App() {
               transition={pageTransition}
             >
               <BrandForm
+                user={user}
                 initialUrl={onboardingUrl}
                 onSaved={(brand) => {
                   setSelectedBrand(brand);
@@ -191,6 +261,7 @@ export default function App() {
               transition={pageTransition}
             >
               <BrandForm
+                user={user}
                 existingBrand={selectedBrand}
                 onSaved={(brand) => {
                   setSelectedBrand(brand);
@@ -213,6 +284,7 @@ export default function App() {
               transition={pageTransition}
             >
               <BrandDetail
+                user={user}
                 brand={selectedBrand}
                 onBack={() => {
                   setView('list');
@@ -224,6 +296,42 @@ export default function App() {
                 }}
                 onError={addToast}
                 onSuccess={(msg) => addToast(msg, 'success')}
+              />
+            </motion.div>
+          )}
+
+          {view === 'profile' && (
+            <motion.div
+              key="profile"
+              variants={pageVariants}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+              transition={pageTransition}
+            >
+              <ProfilePage
+                user={user}
+                onBack={() => setView('list')}
+                onLogout={handleLogout}
+                onError={addToast}
+                onSuccess={(msg) => addToast(msg, 'success')}
+              />
+            </motion.div>
+          )}
+
+          {view === 'reset-password' && (
+            <motion.div
+              key="reset-password"
+              variants={pageVariants}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+              transition={pageTransition}
+            >
+              <ResetPasswordPage
+                onSuccess={(msg) => addToast(msg, 'success')}
+                onError={(msg) => addToast(msg, 'error')}
+                onCompleted={() => setView('list')}
               />
             </motion.div>
           )}

@@ -1,5 +1,6 @@
 export type Brand = {
   id: string;
+  user_id?: string;
   name: string;
   url: string | null;
   instagram_handle: string | null;
@@ -28,6 +29,7 @@ export type BrandInsert = Omit<Brand, 'id' | 'created_at' | 'updated_at'>;
 
 export type BrandAsset = {
   id: string;
+  user_id?: string;
   brand_id: string;
   type: 'product_photo' | 'reference' | 'logo';
   url: string;
@@ -38,6 +40,7 @@ export type BrandAsset = {
 
 export type GeneratedPost = {
   id: string;
+  user_id?: string;
   brand_id: string;
   post_type: string;
   format: string;
@@ -86,4 +89,4 @@ export type GeminiAnalysis = {
   emoji_style: string;
 };
 
-export type AppView = 'landing' | 'list' | 'create' | 'edit' | 'detail';
+export type AppView = 'landing' | 'list' | 'create' | 'edit' | 'detail' | 'profile' | 'reset-password';
