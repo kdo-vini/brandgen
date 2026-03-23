@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
-import { GoogleGenAI, Type } from '@google/genai';
 import { Loader2, Wand2, ArrowLeft, Copy, Check, Download, Palette, Image as ImageIcon, Type as TypeIcon, RefreshCw, Pencil, Package, Clock, Hash } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from '../lib/supabase';
 import type { Brand, GeneratedContent, BrandAsset } from '../types';
 import AssetUploader from './AssetUploader';
@@ -11,6 +11,8 @@ type Props = {
   brand: Brand;
   onBack: () => void;
   onEdit: (brand: Brand) => void;
+  onError?: (msg: string) => void;
+  onSuccess?: (msg: string) => void;
 };
 
 type Tab = 'generate' | 'assets' | 'history';
@@ -59,55 +61,7 @@ const imageModels = [
 ];
 const imageSizes = ["1K", "2K", "4K"];
 
-function hexToColorName(hex: string): string {
-  const cleanHex = hex.replace('#', '');
-  const r = parseInt(cleanHex.substring(0, 2), 16);
-  const g = parseInt(cleanHex.substring(2, 4), 16);
-  const b = parseInt(cleanHex.substring(4, 6), 16);
-
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  const lightness = (max + min) / 2 / 255;
-
-  if (max - min < 30) {
-    if (lightness > 0.85) return 'white';
-    if (lightness > 0.6) return 'light gray';
-    if (lightness > 0.4) return 'gray';
-    if (lightness > 0.2) return 'dark gray';
-    return 'near black';
-  }
-
-  let hue = 0;
-  const d = max - min;
-  if (max === r) hue = ((g - b) / d + (g < b ? 6 : 0)) * 60;
-  else if (max === g) hue = ((b - r) / d + 2) * 60;
-  else hue = ((r - g) / d + 4) * 60;
-
-  const saturation = d / 255;
-  let colorName = '';
-
-  if (hue < 15 || hue >= 345) colorName = 'red';
-  else if (hue < 45) colorName = 'orange';
-  else if (hue < 70) colorName = 'yellow';
-  else if (hue < 160) colorName = 'green';
-  else if (hue < 200) colorName = 'teal';
-  else if (hue < 260) colorName = 'blue';
-  else if (hue < 290) colorName = 'purple';
-  else if (hue < 345) colorName = 'pink';
-
-  let prefix = '';
-  if (lightness < 0.25) prefix = 'very dark ';
-  else if (lightness < 0.4) prefix = 'dark ';
-  else if (lightness > 0.75) prefix = 'light ';
-  else if (lightness > 0.85) prefix = 'very light ';
-
-  if (saturation < 0.3) prefix += 'muted ';
-  else if (saturation > 0.7) prefix += 'vivid ';
-
-  return prefix + colorName;
-}
-
-export default function BrandDetail({ brand, onBack, onEdit }: Props) {
+export default function BrandDetail({ brand, onBack, onEdit, onError, onSuccess }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('generate');
 
   // Generator state
@@ -123,10 +77,10 @@ export default function BrandDetail({ brand, onBack, onEdit }: Props) {
   const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
-  const [error, setError] = useState('');
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [isRescanning, setIsRescanning] = useState(false);
   const [editablePrompt, setEditablePrompt] = useState('');
+  const [currentPostId, setCurrentPostId] = useState<string | null>(null);
   const [selectedTemplate, setSelectedTemplate] = useState(0);
 
   const cardRef = useRef<HTMLDivElement>(null);
@@ -134,7 +88,6 @@ export default function BrandDetail({ brand, onBack, onEdit }: Props) {
   const handleRescan = async () => {
     if (!brand.url) return;
     setIsRescanning(true);
-    setError('');
 
     try {
       const scrapeRes = await fetch('/api/scrape', {
@@ -143,7 +96,7 @@ export default function BrandDetail({ brand, onBack, onEdit }: Props) {
         body: JSON.stringify({ url: brand.url })
       });
 
-      if (!scrapeRes.ok) throw new Error('Não conseguimos reanalisar. Tenta de novo?');
+      if (!scrapeRes.ok) throw new Error('Esse site não abriu pra gente 😅 Tenta de novo?');
       const scraped = await scrapeRes.json();
 
       await supabase
@@ -167,17 +120,18 @@ export default function BrandDetail({ brand, onBack, onEdit }: Props) {
       brand.secondary_color = scraped.secondary_color;
       brand.logo_url = scraped.logo_url;
 
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Esse site não abriu pra gente 😅 Tenta de novo?';
+      onError?.(message);
     } finally {
       setIsRescanning(false);
     }
   };
 
   const handleGenerateContent = async () => {
-    setError('');
     setIsGenerating(true);
     setGeneratedImageUrl(null);
+    setCurrentPostId(null);
 
     try {
       // Fetch assets for extra context
@@ -186,101 +140,58 @@ export default function BrandDetail({ brand, onBack, onEdit }: Props) {
         .select('url, filename, type')
         .eq('brand_id', brand.id);
 
-      const assetContext = assets && assets.length > 0
-        ? `\n\nA marca possui ${assets.length} foto(s) de produto/referência disponíveis.`
-        : '';
-
-      const keywordsContext = brand.keywords && brand.keywords.length > 0
-        ? `\nPalavras-chave da marca: ${brand.keywords.join(', ')}`
-        : '';
-
       const styleDescription = imageStyleDescriptions[imageStyle] || imageStyleDescriptions['Post Profissional (Canva-style)'];
 
-      const prompt = `Com base no brand kit abaixo, gere o conteúdo para um post de Instagram.
-
-Brand kit:
-- Nome: ${brand.name}
-- Tipo: ${brand.product_type}
-- Tom de voz: ${brand.tone}
-- Público-alvo: ${brand.target_audience}
-- Proposta de valor: ${brand.value_proposition}
-- Dor principal: ${brand.key_pain}
-- Descrição: ${brand.description || ''}
-- Cores: primária ${brand.primary_color}, secundária ${brand.secondary_color}
-- Idioma: ${brand.language}
-- Estilo de emoji: ${brand.emoji_style}${keywordsContext}${assetContext}
-
-Tipo de post: ${postType}
-Formato: ${format}
-Estilo da Imagem: ${imageStyle}
-
-Retorne um JSON com:
-- hook: título/primeira linha impactante (max 10 palavras)
-- caption: legenda completa em ${brand.language || 'pt-BR'} com quebras de linha naturais (max 300 chars)
-- cta: chamada para ação final (1 linha)
-- hashtags: lista de 15 hashtags relevantes como string (ex: "#tag1 #tag2")
-- image_prompt: prompt DETALHADO em inglês para geração de imagem. IMPORTANTE — o prompt de imagem deve seguir TODAS estas regras:
-
-  1. ESTILO VISUAL OBRIGATÓRIO: ${styleDescription}
-
-  2. COMPOSIÇÃO: A imagem gerada É o próprio post final — ela deve preencher o frame completo sem nenhuma borda, moldura, sombra externa ou background adicional ao redor. NÃO gere um mockup de post, NÃO coloque a imagem dentro de um quadrado com fundo extra, NÃO simule como um post apareceria numa tela. A imagem deve ter elementos visuais de alta qualidade: fotografia profissional, gradientes, formas, luz. Proibido: flat design, vetores simples, clipart, (ícones cartoon.
-
-  3. FOTOGRAFIA: Se relevante ao produto (${brand.product_type}), inclua elementos fotográficos realistas — produto com iluminação profissional, mockups, ou cenas lifestyle. Use composição em camadas com o produto sobre o background estilizado.
-
-  4. CORES DA MARCA: Use as cores "${hexToColorName(brand.primary_color)}" (primária) e "${hexToColorName(brand.secondary_color)}" (secundária) como cores dominantes nos gradientes, fundos, e acentos visuais. Descreva as cores pelo NOME (ex: "dark blue", "warm orange"), NUNCA inclua códigos hexadecimais como #XXXXXX no prompt.
-
-  5. TIPOGRAFIA: ${includeText ? `Inclua texto tipográfico bold e moderno no design em ${brand.language || 'pt-BR'} — um título/headline curto e impactante e opcionalmente um subtítulo menor. O texto DEVE estar em ${brand.language || 'português brasileiro'}. Use fontes sans-serif modernas e pesadas.` : 'NÃO inclua NENHUM texto, tipografia, letras, palavras ou números na imagem. A imagem deve ser puramente visual, sem nenhum elemento textual.'}
-
-  6. ELEMENTOS DE DESIGN: Adicione elementos decorativos sutis como: formas geométricas abstratas, linhas decorativas, efeitos de luz, sombras suaves, ou partículas. NÃO use clipart ou ícones cartoon.
-
-  7. FORMATO: ${format}. A imagem deve ser otimizada para este formato exato.
-
-  8. O prompt deve ser específico, detalhado (mínimo 3 frases), e em inglês.
-
-  9. PROIBIDO: NUNCA inclua códigos hexadecimais de cores (como #1c446c), notações técnicas, labels, anotações, ou qualquer texto que pareça código na imagem. Cores devem ser usadas visualmente, não escritas como texto.`;
-
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.1-pro-preview',
-        contents: prompt,
-        config: {
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              hook: { type: Type.STRING },
-              caption: { type: Type.STRING },
-              cta: { type: Type.STRING },
-              hashtags: { type: Type.STRING },
-              image_prompt: { type: Type.STRING }
-            },
-            required: ['hook', 'caption', 'cta', 'hashtags', 'image_prompt']
-          }
-        }
+      const generateRes = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          brand,
+          postType,
+          format,
+          imageStyle,
+          includeText,
+          imageStyleDescription: styleDescription,
+          assetCount: assets?.length || 0,
+        })
       });
 
-      const content: GeneratedContent = JSON.parse(response.text || '{}');
+      if (!generateRes.ok) {
+        const errData = await generateRes.json();
+        throw new Error(errData.error || 'A IA viajou 😅 Tenta mais uma vez?');
+      }
+
+      const content: GeneratedContent = await generateRes.json();
       setGeneratedContent(content);
       setEditablePrompt(content.image_prompt);
 
-      // Save to generated_posts
-      await supabase.from('generated_posts').insert({
-        brand_id: brand.id,
-        post_type: postType,
-        format,
-        image_style: imageStyle,
-        aspect_ratio: aspectRatio,
-        image_model: imageModel,
-        image_size: imageSize,
-        hook: content.hook,
-        caption: content.caption,
-        cta: content.cta,
-        hashtags: content.hashtags,
-        image_prompt: content.image_prompt,
-      });
+      // Save to generated_posts and capture the row ID
+      const { data: insertedPost } = await supabase
+        .from('generated_posts')
+        .insert({
+          brand_id: brand.id,
+          post_type: postType,
+          format,
+          image_style: imageStyle,
+          aspect_ratio: aspectRatio,
+          image_model: imageModel,
+          image_size: imageSize,
+          hook: content.hook,
+          caption: content.caption,
+          cta: content.cta,
+          hashtags: content.hashtags,
+          image_prompt: content.image_prompt,
+        })
+        .select('id')
+        .single();
 
-    } catch (err: any) {
-      setError(err.message || 'Deu ruim na geração. Tenta mais uma vez?');
+      if (insertedPost?.id) setCurrentPostId(insertedPost.id);
+
+      onSuccess?.('Post criado! Agora é só copiar 🔥');
+
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'A IA viajou 😅 Tenta mais uma vez?';
+      onError?.(message);
     } finally {
       setIsGenerating(false);
     }
@@ -289,57 +200,65 @@ Retorne um JSON com:
   const handleGenerateImage = async () => {
     if (!generatedContent) return;
 
-    setError('');
     setIsGeneratingImage(true);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
       const selectedModel = imageModels.find(m => m.id === imageModel);
-      const isImagen = selectedModel?.type === 'imagen';
 
-      if (isImagen) {
-        // Imagen API uses generateImages()
-        const response = await ai.models.generateImages({
-          model: imageModel,
+      const imageRes = await fetch('/api/image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           prompt: editablePrompt,
-          config: {
-            numberOfImages: 1,
-            aspectRatio: aspectRatio as any,
-          },
-        });
+          imageModel,
+          aspectRatio,
+          imageSize,
+          modelType: selectedModel?.type || 'imagen',
+        })
+      });
 
-        if (response.generatedImages && response.generatedImages.length > 0) {
-          const imgBytes = response.generatedImages[0].image?.imageBytes;
-          if (imgBytes) {
-            const imageUrl = `data:image/png;base64,${imgBytes}`;
-            setGeneratedImageUrl(imageUrl);
-          }
-        }
-      } else {
-        // Nano Banana API uses generateContent()
-        const response = await ai.models.generateContent({
-          model: imageModel,
-          contents: {
-            parts: [{ text: editablePrompt }]
-          },
-          config: {
-            imageConfig: {
-              aspectRatio: aspectRatio as any,
-              imageSize: imageSize as any
+      if (!imageRes.ok) {
+        const errData = await imageRes.json();
+        throw new Error(errData.error || 'Deu ruim na imagem 🙈 Tenta de novo?');
+      }
+
+      const { imageBase64 } = await imageRes.json();
+      if (imageBase64) {
+        const dataUrl = `data:image/png;base64,${imageBase64}`;
+        setGeneratedImageUrl(dataUrl);
+
+        // Upload to Supabase Storage and save URL in generated_posts
+        try {
+          const byteChars = atob(imageBase64);
+          const byteNums = new Array(byteChars.length);
+          for (let i = 0; i < byteChars.length; i++) byteNums[i] = byteChars.charCodeAt(i);
+          const blob = new Blob([new Uint8Array(byteNums)], { type: 'image/png' });
+
+          const fileName = `post-images/${brand.id}/${Date.now()}.png`;
+          const { error: uploadError } = await supabase.storage
+            .from('brand-assets')
+            .upload(fileName, blob, { contentType: 'image/png', upsert: false });
+
+          if (!uploadError) {
+            const { data: publicData } = supabase.storage
+              .from('brand-assets')
+              .getPublicUrl(fileName);
+
+            if (publicData?.publicUrl && currentPostId) {
+              await supabase
+                .from('generated_posts')
+                .update({ image_url: publicData.publicUrl })
+                .eq('id', currentPostId);
             }
           }
-        });
-
-        for (const part of response.candidates?.[0]?.content?.parts || []) {
-          if (part.inlineData) {
-            const imageUrl = `data:image/png;base64,${part.inlineData.data}`;
-            setGeneratedImageUrl(imageUrl);
-            break;
-          }
+        } catch (uploadErr) {
+          // Image is displayed locally even if upload fails — not critical
+          console.warn('Failed to persist image to storage:', uploadErr);
         }
       }
-    } catch (err: any) {
-      setError(err.message || 'Não conseguimos criar a imagem. Tenta de novo?');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Deu ruim na imagem 🙈 Tenta de novo?';
+      onError?.(message);
     } finally {
       setIsGeneratingImage(false);
     }
@@ -381,9 +300,9 @@ Retorne um JSON com:
   };
 
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
-    { id: 'generate', label: 'Criar post', icon: <Wand2 className="h-4 w-4" /> },
-    { id: 'assets', label: 'Assets', icon: <Package className="h-4 w-4" /> },
-    { id: 'history', label: 'Histórico', icon: <Clock className="h-4 w-4" /> },
+    { id: 'generate', label: 'Criar post ✨', icon: <Wand2 className="h-4 w-4" /> },
+    { id: 'assets', label: 'Assets 📸', icon: <Package className="h-4 w-4" /> },
+    { id: 'history', label: 'Histórico 📋', icon: <Clock className="h-4 w-4" /> },
   ];
 
   return (
@@ -423,7 +342,7 @@ Retorne um JSON com:
               className="inline-flex items-center px-3 py-1.5 border border-neutral-300 rounded-lg text-xs font-medium text-neutral-700 bg-white hover:bg-neutral-50 transition-colors"
             >
               {isRescanning ? <Loader2 className="animate-spin mr-1.5 h-3.5 w-3.5" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}
-              {isRescanning ? 'Analisando...' : 'Reanalisar site'}
+              {isRescanning ? 'Analisando...' : 'Atualizar dados do site'}
             </button>
           )}
           <button
@@ -479,12 +398,6 @@ Retorne um JSON com:
         ))}
       </div>
 
-      {error && (
-        <div className="p-3 bg-red-50 text-red-700 text-sm rounded-lg border border-red-100 mb-6">
-          {error}
-        </div>
-      )}
-
       {/* Tab Content */}
       {activeTab === 'generate' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
@@ -493,7 +406,7 @@ Retorne um JSON com:
             <div className="bg-white p-6 rounded-xl shadow-sm border border-neutral-200 space-y-5">
               <h2 className="text-lg font-semibold text-neutral-900 flex items-center gap-2 font-display">
                 <TypeIcon className="h-5 w-5 text-[#FF8C5A]" />
-                Configurar post
+                Montar o post
               </h2>
 
               <div>
@@ -516,14 +429,14 @@ Retorne um JSON com:
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-1">Estilo de imagem</label>
+                <label className="block text-sm font-medium text-neutral-700 mb-1">Estilo visual</label>
                 <select value={imageStyle} onChange={(e) => setImageStyle(e.target.value)} className="block w-full pl-3 pr-10 py-2 text-base border-neutral-300 focus:outline-none focus:ring-[#FF6B35] focus:border-[#FF6B35] sm:text-sm rounded-lg border">
                   {imageStyles.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-1">Modelo de imagem</label>
+                <label className="block text-sm font-medium text-neutral-700 mb-1">Modelo de IA</label>
                 <select value={imageModel} onChange={(e) => setImageModel(e.target.value)} className="block w-full pl-3 pr-10 py-2 text-base border-neutral-300 focus:outline-none focus:ring-[#FF6B35] focus:border-[#FF6B35] sm:text-sm rounded-lg border">
                   {imageModels.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                 </select>
@@ -562,111 +475,143 @@ Retorne um JSON com:
                 </button>
               </div>
 
-              <button
+              <motion.button
+                whileTap={{ scale: 0.97 }}
                 onClick={handleGenerateContent}
                 disabled={isGenerating}
                 className="w-full flex justify-center items-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-neutral-900 hover:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-neutral-900 disabled:opacity-50 transition-colors"
               >
                 {isGenerating ? (
-                  <><Loader2 className="animate-spin -ml-1 mr-2 h-4 w-4" /> Criando o texto...</>
+                  <><Loader2 className="animate-spin -ml-1 mr-2 h-4 w-4" /> A IA tá inspirada... ✍️</>
                 ) : (
-                  <><Wand2 className="-ml-1 mr-2 h-4 w-4" /> Criar conteúdo</>
+                  <><Wand2 className="-ml-1 mr-2 h-4 w-4" /> Criar conteúdo 🔥</>
                 )}
-              </button>
+              </motion.button>
             </div>
           </div>
 
           {/* Results */}
           <div className="lg:col-span-7 space-y-6">
-            {generatedContent && (
-              <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden">
-                <div className="px-6 py-4 border-b border-neutral-200 bg-neutral-50 flex justify-between items-center">
-                  <h2 className="text-lg font-semibold text-neutral-900 font-display">Copy do post</h2>
-                  <button
-                    onClick={() => copyToClipboard(`${generatedContent.hook}\n\n${generatedContent.caption}\n\n${generatedContent.cta}\n\n${generatedContent.hashtags}`, 'copy')}
-                    className="inline-flex items-center px-3 py-1.5 border border-neutral-300 shadow-sm text-xs font-medium rounded text-neutral-700 bg-white hover:bg-neutral-50"
-                  >
-                    {copiedField === 'copy' ? <Check className="h-4 w-4 mr-1 text-emerald-500" /> : <Copy className="h-4 w-4 mr-1" />}
-                    Copiar tudo
-                  </button>
-                </div>
-                <div className="p-6 space-y-4">
-                  <div>
-                    <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1">Hook</h4>
-                    <p className="text-lg font-bold text-neutral-900">{generatedContent.hook}</p>
+            <AnimatePresence>
+              {generatedContent && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.97 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ duration: 0.3, ease: 'easeOut' }}
+                  className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden"
+                >
+                  <div className="px-6 py-4 border-b border-neutral-200 bg-neutral-50 flex justify-between items-center">
+                    <h2 className="text-lg font-semibold text-neutral-900 font-display">Seu post tá pronto! 🎉</h2>
+                    <button
+                      onClick={() => copyToClipboard(`${generatedContent.hook}\n\n${generatedContent.caption}\n\n${generatedContent.cta}\n\n${generatedContent.hashtags}`, 'copy')}
+                      className="inline-flex items-center px-3 py-1.5 border border-neutral-300 shadow-sm text-xs font-medium rounded text-neutral-700 bg-white hover:bg-neutral-50"
+                    >
+                      {copiedField === 'copy' ? <Check className="h-4 w-4 mr-1 text-emerald-500" /> : <Copy className="h-4 w-4 mr-1" />}
+                      Copiar tudo
+                    </button>
                   </div>
-                  <div>
-                    <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1">Legenda</h4>
-                    <p className="text-sm text-neutral-700 whitespace-pre-wrap">{generatedContent.caption}</p>
+                  <div className="p-6 space-y-4">
+                    <motion.div
+                      initial={{ opacity: 0, x: -8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.1 }}
+                    >
+                      <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1">Hook</h4>
+                      <p className="text-lg font-bold text-neutral-900">{generatedContent.hook}</p>
+                    </motion.div>
+                    <motion.div
+                      initial={{ opacity: 0, x: -8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.2 }}
+                    >
+                      <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1">Legenda</h4>
+                      <p className="text-sm text-neutral-700 whitespace-pre-wrap">{generatedContent.caption}</p>
+                    </motion.div>
+                    <motion.div
+                      initial={{ opacity: 0, x: -8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.3 }}
+                    >
+                      <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1">CTA</h4>
+                      <p className="text-sm font-medium text-[#FF6B35]">{generatedContent.cta}</p>
+                    </motion.div>
+                    <motion.div
+                      initial={{ opacity: 0, x: -8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.4 }}
+                    >
+                      <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1">Hashtags</h4>
+                      <p className="text-sm text-neutral-500">{generatedContent.hashtags}</p>
+                    </motion.div>
                   </div>
-                  <div>
-                    <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1">CTA</h4>
-                    <p className="text-sm font-medium text-[#FF6B35]">{generatedContent.cta}</p>
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1">Hashtags</h4>
-                    <p className="text-sm text-neutral-500">{generatedContent.hashtags}</p>
-                  </div>
-                </div>
-              </div>
-            )}
+                </motion.div>
+              )}
+            </AnimatePresence>
 
-            {generatedContent && (
-              <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden">
-                <div className="px-6 py-4 border-b border-neutral-200 bg-neutral-50 flex justify-between items-center">
-                  <h2 className="text-lg font-semibold text-neutral-900 flex items-center gap-2 font-display">
-                    <Palette className="h-5 w-5 text-[#FF8C5A]" />
-                    Prompt de imagem
-                  </h2>
-                  <button
-                    onClick={() => copyToClipboard(editablePrompt, 'prompt')}
-                    className="inline-flex items-center px-3 py-1.5 border border-neutral-300 shadow-sm text-xs font-medium rounded text-neutral-700 bg-white hover:bg-neutral-50"
-                  >
-                    {copiedField === 'prompt' ? <Check className="h-4 w-4 mr-1 text-emerald-500" /> : <Copy className="h-4 w-4 mr-1" />}
-                    Copiar prompt
-                  </button>
-                </div>
-                <div className="p-6">
-                  <textarea
-                    value={editablePrompt}
-                    onChange={(e) => setEditablePrompt(e.target.value)}
-                    rows={6}
-                    className="w-full text-sm text-neutral-700 bg-neutral-50 p-4 rounded-lg border border-neutral-200 font-mono resize-y focus:outline-none focus:ring-2 focus:ring-[#FF6B35] focus:border-transparent"
-                    placeholder="Edite o prompt antes de gerar a imagem..."
-                  />
-                  <p className="text-xs text-neutral-400 mt-1">Edite livremente antes de gerar — as alterações não afetam o conteúdo do post.</p>
-                  <div className="mt-4 flex flex-col sm:flex-row gap-4">
+            <AnimatePresence>
+              {generatedContent && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.97 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ duration: 0.3, ease: 'easeOut', delay: 0.15 }}
+                  className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden"
+                >
+                  <div className="px-6 py-4 border-b border-neutral-200 bg-neutral-50 flex justify-between items-center">
+                    <h2 className="text-lg font-semibold text-neutral-900 flex items-center gap-2 font-display">
+                      <Palette className="h-5 w-5 text-[#FF8C5A]" />
+                      Prompt de imagem
+                    </h2>
                     <button
-                      onClick={() => { const r = generatedContent?.image_prompt; if (r) setEditablePrompt(r); }}
-                      className="inline-flex items-center px-3 py-1.5 border border-neutral-300 rounded-lg text-xs font-medium text-neutral-600 bg-white hover:bg-neutral-50 transition-colors"
-                      title="Restaurar prompt gerado pela IA"
+                      onClick={() => copyToClipboard(editablePrompt, 'prompt')}
+                      className="inline-flex items-center px-3 py-1.5 border border-neutral-300 shadow-sm text-xs font-medium rounded text-neutral-700 bg-white hover:bg-neutral-50"
                     >
-                      <RefreshCw className="h-3.5 w-3.5 mr-1.5" /> Restaurar original
+                      {copiedField === 'prompt' ? <Check className="h-4 w-4 mr-1 text-emerald-500" /> : <Copy className="h-4 w-4 mr-1" />}
+                      Copiar prompt
                     </button>
                   </div>
-                  <div className="mt-3 flex flex-col sm:flex-row gap-4">
-                    <button
-                      onClick={handleGenerateImage}
-                      disabled={isGeneratingImage || !editablePrompt.trim()}
-                      className="flex-1 flex justify-center items-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-[#FF6B35] hover:bg-[#E55A28] disabled:opacity-50 transition-colors"
-                    >
-                      {isGeneratingImage ? (
-                        <><Loader2 className="animate-spin -ml-1 mr-2 h-4 w-4" /> Pintando a arte...</>
-                      ) : (
-                        <><ImageIcon className="-ml-1 mr-2 h-4 w-4" /> Criar imagem com IA</>
-                      )}
-                    </button>
-                    <button
-                      onClick={downloadCard}
-                      disabled={!generatedContent}
-                      className="flex-1 flex justify-center items-center py-2.5 px-4 border border-neutral-300 rounded-lg shadow-sm text-sm font-medium text-neutral-700 bg-white hover:bg-neutral-50 disabled:opacity-40 transition-colors"
-                    >
-                      <Download className="-ml-1 mr-2 h-4 w-4" /> Baixar card
-                    </button>
+                  <div className="p-6">
+                    <textarea
+                      value={editablePrompt}
+                      onChange={(e) => setEditablePrompt(e.target.value)}
+                      rows={6}
+                      className="w-full text-sm text-neutral-700 bg-neutral-50 p-4 rounded-lg border border-neutral-200 font-mono resize-y focus:outline-none focus:ring-2 focus:ring-[#FF6B35] focus:border-transparent"
+                      placeholder="Edite o prompt antes de gerar a imagem..."
+                    />
+                    <p className="text-xs text-neutral-400 mt-1">Edite livremente antes de gerar — as alterações não afetam o conteúdo do post.</p>
+                    <div className="mt-4 flex flex-col sm:flex-row gap-4">
+                      <button
+                        onClick={() => { const r = generatedContent?.image_prompt; if (r) setEditablePrompt(r); }}
+                        className="inline-flex items-center px-3 py-1.5 border border-neutral-300 rounded-lg text-xs font-medium text-neutral-600 bg-white hover:bg-neutral-50 transition-colors"
+                        title="Restaurar prompt gerado pela IA"
+                      >
+                        <RefreshCw className="h-3.5 w-3.5 mr-1.5" /> Restaurar original
+                      </button>
+                    </div>
+                    <div className="mt-3 flex flex-col sm:flex-row gap-4">
+                      <motion.button
+                        whileTap={{ scale: 0.97 }}
+                        onClick={handleGenerateImage}
+                        disabled={isGeneratingImage || !editablePrompt.trim()}
+                        className="flex-1 flex justify-center items-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-[#FF6B35] hover:bg-[#E55A28] disabled:opacity-50 transition-colors"
+                      >
+                        {isGeneratingImage ? (
+                          <><Loader2 className="animate-spin -ml-1 mr-2 h-4 w-4" /> Pintando... 🖌️</>
+                        ) : (
+                          <><ImageIcon className="-ml-1 mr-2 h-4 w-4" /> Gerar imagem 🎨</>
+                        )}
+                      </motion.button>
+                      <button
+                        onClick={downloadCard}
+                        disabled={!generatedContent}
+                        className="flex-1 flex justify-center items-center py-2.5 px-4 border border-neutral-300 rounded-lg shadow-sm text-sm font-medium text-neutral-700 bg-white hover:bg-neutral-50 disabled:opacity-40 transition-colors"
+                      >
+                        <Download className="-ml-1 mr-2 h-4 w-4" /> Baixar card
+                      </button>
+                    </div>
                   </div>
-                </div>
-              </div>
-            )}
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* Visual Previews */}
             <div className={`grid gap-6 ${generatedContent && generatedImageUrl ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
@@ -725,7 +670,7 @@ Retorne um JSON com:
             {!generatedContent && !isGenerating && (
               <div className="flex flex-col items-center justify-center h-48 text-center">
                 <Wand2 className="h-8 w-8 text-neutral-300 mb-3" />
-                <p className="text-sm text-neutral-400">Escolha as opções acima e clique em "Criar conteúdo".</p>
+                <p className="text-sm text-neutral-400">Escolha o tipo de post acima e manda ver! 👆</p>
               </div>
             )}
           </div>

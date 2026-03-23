@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Loader2, Wand2, Link as LinkIcon, Save, ArrowLeft } from 'lucide-react';
 import { motion } from 'motion/react';
-import { GoogleGenAI, Type } from '@google/genai';
 import { supabase } from '../lib/supabase';
 import type { Brand, ScrapeResult, GeminiAnalysis } from '../types';
 
@@ -79,49 +78,20 @@ export default function BrandForm({ existingBrand, onSaved, onCancel, onError, o
       await new Promise(resolve => setTimeout(resolve, 300));
       setLoadingStep(loadingSteps[1]);
 
-      // Step 2: Analyze with Gemini
+      // Step 2: Analyze with /api/analyze
       setLoadingStep(loadingSteps[2]);
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
-      const prompt = `Analise esta marca com base nos dados extraídos do site:
-URL: ${scraped.url}
-Título: ${scraped.title}
-Descrição: ${scraped.description}
-Textos principais: ${scraped.body_text}
-Cores predominantes: ${scraped.colors.join(', ')}
-
-Retorne um JSON com:
-- brand_name: nome da marca
-- product_type: 'saas' | 'ecommerce' | 'food' | 'service' | 'other'
-- tone: 'formal' | 'casual' | 'bold' | 'friendly'
-- target_audience: descrição em 1 frase
-- value_proposition: proposta de valor principal em 1 frase
-- key_pain: principal dor que o produto resolve
-- language: 'pt-BR' | 'en' | 'es'
-- emoji_style: 'minimal' | 'moderate' | 'heavy'`;
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.1-pro-preview',
-        contents: prompt,
-        config: {
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              brand_name: { type: Type.STRING },
-              product_type: { type: Type.STRING },
-              tone: { type: Type.STRING },
-              target_audience: { type: Type.STRING },
-              value_proposition: { type: Type.STRING },
-              key_pain: { type: Type.STRING },
-              language: { type: Type.STRING },
-              emoji_style: { type: Type.STRING }
-            },
-            required: ['brand_name', 'product_type', 'tone', 'target_audience', 'value_proposition', 'key_pain', 'language', 'emoji_style']
-          }
-        }
+      const analyzeRes = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scraped })
       });
 
-      const analysis: GeminiAnalysis = JSON.parse(response.text || '{}');
+      if (!analyzeRes.ok) {
+        const errData = await analyzeRes.json();
+        throw new Error(errData.error || 'Ih, travou! Tenta de novo? 🔄');
+      }
+
+      const analysis: GeminiAnalysis = await analyzeRes.json();
 
       setLoadingStep(loadingSteps[3]);
 

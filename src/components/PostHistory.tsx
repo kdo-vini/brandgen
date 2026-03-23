@@ -55,7 +55,7 @@ export default function PostHistory({ brandId }: Props) {
     return (
       <div className="text-center py-8">
         <Clock className="h-8 w-8 text-neutral-300 mx-auto mb-2" />
-        <p className="text-sm text-neutral-400">Nenhum post ainda. Que tal criar o primeiro?</p>
+        <p className="text-sm text-neutral-400">Nada por aqui ainda. Bora criar o primeiro post? 🚀</p>
       </div>
     );
   }
@@ -64,7 +64,7 @@ export default function PostHistory({ brandId }: Props) {
     <div className="space-y-3">
       <h3 className="text-sm font-semibold text-neutral-700 flex items-center gap-2">
         <Clock className="h-4 w-4" />
-        {posts.length} post{posts.length > 1 ? 's' : ''} gerado{posts.length > 1 ? 's' : ''}
+        {posts.length} post{posts.length > 1 ? 's' : ''} criado{posts.length > 1 ? 's' : ''}
       </h3>
 
       {posts.map(post => (
@@ -76,7 +76,7 @@ export default function PostHistory({ brandId }: Props) {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium text-neutral-900 truncate">
-                  {post.hook || 'Post sem hook'}
+                  {post.hook || 'Post sem título'}
                 </span>
                 <span className="flex-shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-neutral-100 text-neutral-600">
                   {post.post_type}

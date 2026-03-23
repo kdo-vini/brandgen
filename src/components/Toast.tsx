@@ -11,6 +11,7 @@ export type ToastData = {
 };
 
 type ToastItemProps = {
+  key?: React.Key;
   toast: ToastData;
   onRemove: (id: string) => void;
 };
