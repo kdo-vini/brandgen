@@ -1,0 +1,5 @@
+{
+  "name": "BrandGen",
+  "description": "Extraia a identidade visual de qualquer marca a partir de uma URL e gere posts prontos para o Instagram com copy e prompt de imagem usando IA.",
+  "requestFramePermissions": []
+}
