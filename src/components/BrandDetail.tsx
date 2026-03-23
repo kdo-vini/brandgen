@@ -58,6 +58,54 @@ const imageModels = [
 ];
 const imageSizes = ["1K", "2K", "4K"];
 
+function hexToColorName(hex: string): string {
+  const cleanHex = hex.replace('#', '');
+  const r = parseInt(cleanHex.substring(0, 2), 16);
+  const g = parseInt(cleanHex.substring(2, 4), 16);
+  const b = parseInt(cleanHex.substring(4, 6), 16);
+
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const lightness = (max + min) / 2 / 255;
+
+  if (max - min < 30) {
+    if (lightness > 0.85) return 'white';
+    if (lightness > 0.6) return 'light gray';
+    if (lightness > 0.4) return 'gray';
+    if (lightness > 0.2) return 'dark gray';
+    return 'near black';
+  }
+
+  let hue = 0;
+  const d = max - min;
+  if (max === r) hue = ((g - b) / d + (g < b ? 6 : 0)) * 60;
+  else if (max === g) hue = ((b - r) / d + 2) * 60;
+  else hue = ((r - g) / d + 4) * 60;
+
+  const saturation = d / 255;
+  let colorName = '';
+
+  if (hue < 15 || hue >= 345) colorName = 'red';
+  else if (hue < 45) colorName = 'orange';
+  else if (hue < 70) colorName = 'yellow';
+  else if (hue < 160) colorName = 'green';
+  else if (hue < 200) colorName = 'teal';
+  else if (hue < 260) colorName = 'blue';
+  else if (hue < 290) colorName = 'purple';
+  else if (hue < 345) colorName = 'pink';
+
+  let prefix = '';
+  if (lightness < 0.25) prefix = 'very dark ';
+  else if (lightness < 0.4) prefix = 'dark ';
+  else if (lightness > 0.75) prefix = 'light ';
+  else if (lightness > 0.85) prefix = 'very light ';
+
+  if (saturation < 0.3) prefix += 'muted ';
+  else if (saturation > 0.7) prefix += 'vivid ';
+
+  return prefix + colorName;
+}
+
 export default function BrandDetail({ brand, onBack, onEdit }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('generate');
 
@@ -68,6 +116,7 @@ export default function BrandDetail({ brand, onBack, onEdit }: Props) {
   const [aspectRatio, setAspectRatio] = useState('1:1');
   const [imageModel, setImageModel] = useState('imagen-4.0-ultra-generate-001');
   const [imageSize, setImageSize] = useState('1K');
+  const [includeText, setIncludeText] = useState(true);
 
   const [generatedContent, setGeneratedContent] = useState<GeneratedContent | null>(null);
   const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
@@ -91,7 +140,7 @@ export default function BrandDetail({ brand, onBack, onEdit }: Props) {
         body: JSON.stringify({ url: brand.url })
       });
 
-      if (!scrapeRes.ok) throw new Error('Erro ao re-escanear o site.');
+      if (!scrapeRes.ok) throw new Error('Não conseguimos reanalisar. Tenta de novo?');
       const scraped = await scrapeRes.json();
 
       await supabase
@@ -175,15 +224,17 @@ Retorne um JSON com:
 
   3. FOTOGRAFIA: Se relevante ao produto (${brand.product_type}), inclua elementos fotográficos realistas — produto com iluminação profissional, mockups, ou cenas lifestyle. Use composição em camadas com o produto sobre o background estilizado.
 
-  4. CORES DA MARCA: Use as cores ${brand.primary_color} (primária) e ${brand.secondary_color} (secundária) como cores dominantes nos gradientes, fundos, e acentos visuais.
+  4. CORES DA MARCA: Use as cores "${hexToColorName(brand.primary_color)}" (primária) e "${hexToColorName(brand.secondary_color)}" (secundária) como cores dominantes nos gradientes, fundos, e acentos visuais. Descreva as cores pelo NOME (ex: "dark blue", "warm orange"), NUNCA inclua códigos hexadecimais como #XXXXXX no prompt.
 
-  5. TIPOGRAFIA: Inclua texto tipográfico bold e moderno no design — um título/headline curto e impactante e opcionalmente um subtítulo menor. Use fontes sans-serif modernas e pesadas.
+  5. TIPOGRAFIA: ${includeText ? `Inclua texto tipográfico bold e moderno no design em ${brand.language || 'pt-BR'} — um título/headline curto e impactante e opcionalmente um subtítulo menor. O texto DEVE estar em ${brand.language || 'português brasileiro'}. Use fontes sans-serif modernas e pesadas.` : 'NÃO inclua NENHUM texto, tipografia, letras, palavras ou números na imagem. A imagem deve ser puramente visual, sem nenhum elemento textual.'}
 
   6. ELEMENTOS DE DESIGN: Adicione elementos decorativos sutis como: formas geométricas abstratas, linhas decorativas, efeitos de luz, sombras suaves, ou partículas. NÃO use clipart ou ícones cartoon.
 
   7. FORMATO: ${format}. A imagem deve ser otimizada para este formato exato.
 
-  8. O prompt deve ser específico, detalhado (mínimo 3 frases), e em inglês.`;
+  8. O prompt deve ser específico, detalhado (mínimo 3 frases), e em inglês.
+
+  9. PROIBIDO: NUNCA inclua códigos hexadecimais de cores (como #1c446c), notações técnicas, labels, anotações, ou qualquer texto que pareça código na imagem. Cores devem ser usadas visualmente, não escritas como texto.`;
 
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
       const response = await ai.models.generateContent({
@@ -228,7 +279,7 @@ Retorne um JSON com:
       setTimeout(() => drawPreviewCard(content.hook, content.cta), 100);
 
     } catch (err: any) {
-      setError(err.message || 'Erro ao gerar conteúdo.');
+      setError(err.message || 'Deu ruim na geração. Tenta mais uma vez?');
     } finally {
       setIsGenerating(false);
     }
@@ -287,7 +338,7 @@ Retorne um JSON com:
         }
       }
     } catch (err: any) {
-      setError(err.message || 'Erro ao gerar imagem.');
+      setError(err.message || 'Não conseguimos criar a imagem. Tenta de novo?');
     } finally {
       setIsGeneratingImage(false);
     }
@@ -341,7 +392,7 @@ Retorne um JSON com:
     ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
     ctx.font = '24px Inter, sans-serif';
     ctx.textAlign = 'right';
-    ctx.fillText('BrandGen', canvas.width - 40, canvas.height - 40);
+    ctx.fillText('Criaê', canvas.width - 40, canvas.height - 40);
   };
 
   const copyToClipboard = (text: string, field: string) => {
@@ -353,13 +404,13 @@ Retorne um JSON com:
   const downloadCanvas = () => {
     if (!canvasRef.current) return;
     const link = document.createElement('a');
-    link.download = `brandgen-${brand.name}-${Date.now()}.png`;
+    link.download = `criae-${brand.name}-${Date.now()}.png`;
     link.href = canvasRef.current.toDataURL('image/png');
     link.click();
   };
 
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
-    { id: 'generate', label: 'Gerar Post', icon: <Wand2 className="h-4 w-4" /> },
+    { id: 'generate', label: 'Criar post', icon: <Wand2 className="h-4 w-4" /> },
     { id: 'assets', label: 'Assets', icon: <Package className="h-4 w-4" /> },
     { id: 'history', label: 'Histórico', icon: <Clock className="h-4 w-4" /> },
   ];
@@ -384,7 +435,7 @@ Retorne um JSON com:
               <h2 className="text-xl font-bold text-neutral-900">{brand.name}</h2>
               <div className="flex items-center gap-2 mt-0.5">
                 {brand.product_type && (
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800 capitalize">{brand.product_type}</span>
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-[#FFE0D0] text-[#1A1A2E] capitalize">{brand.product_type}</span>
                 )}
                 {brand.tone && (
                   <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 capitalize">{brand.tone}</span>
@@ -401,7 +452,7 @@ Retorne um JSON com:
               className="inline-flex items-center px-3 py-1.5 border border-neutral-300 rounded-lg text-xs font-medium text-neutral-700 bg-white hover:bg-neutral-50 transition-colors"
             >
               {isRescanning ? <Loader2 className="animate-spin mr-1.5 h-3.5 w-3.5" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}
-              Re-escanear
+              {isRescanning ? 'Analisando...' : 'Reanalisar site'}
             </button>
           )}
           <button
@@ -469,14 +520,14 @@ Retorne um JSON com:
           {/* Controls */}
           <div className="lg:col-span-5 space-y-6">
             <div className="bg-white p-6 rounded-xl shadow-sm border border-neutral-200 space-y-5">
-              <h2 className="text-lg font-semibold text-neutral-900 flex items-center gap-2">
-                <TypeIcon className="h-5 w-5 text-indigo-500" />
-                Configurar Post
+              <h2 className="text-lg font-semibold text-neutral-900 flex items-center gap-2 font-display">
+                <TypeIcon className="h-5 w-5 text-[#FF8C5A]" />
+                Configurar post
               </h2>
 
               <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-1">Tipo de Post</label>
-                <select value={postType} onChange={(e) => setPostType(e.target.value)} className="block w-full pl-3 pr-10 py-2 text-base border-neutral-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-lg border">
+                <label className="block text-sm font-medium text-neutral-700 mb-1">Tipo de post</label>
+                <select value={postType} onChange={(e) => setPostType(e.target.value)} className="block w-full pl-3 pr-10 py-2 text-base border-neutral-300 focus:outline-none focus:ring-[#FF6B35] focus:border-[#FF6B35] sm:text-sm rounded-lg border">
                   {postTypes.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
@@ -486,7 +537,7 @@ Retorne um JSON com:
                 <div className="space-y-2">
                   {formats.map(f => (
                     <div key={f} className="flex items-center">
-                      <input id={f} name="format" type="radio" checked={format === f} onChange={() => setFormat(f)} className="focus:ring-indigo-500 h-4 w-4 text-indigo-600 border-neutral-300" />
+                      <input id={f} name="format" type="radio" checked={format === f} onChange={() => setFormat(f)} className="focus:ring-[#FF6B35] h-4 w-4 text-[#FF6B35] border-neutral-300" />
                       <label htmlFor={f} className="ml-3 block text-sm font-medium text-neutral-700">{f}</label>
                     </div>
                   ))}
@@ -494,15 +545,15 @@ Retorne um JSON com:
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-1">Estilo da Imagem IA</label>
-                <select value={imageStyle} onChange={(e) => setImageStyle(e.target.value)} className="block w-full pl-3 pr-10 py-2 text-base border-neutral-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-lg border">
+                <label className="block text-sm font-medium text-neutral-700 mb-1">Estilo de imagem</label>
+                <select value={imageStyle} onChange={(e) => setImageStyle(e.target.value)} className="block w-full pl-3 pr-10 py-2 text-base border-neutral-300 focus:outline-none focus:ring-[#FF6B35] focus:border-[#FF6B35] sm:text-sm rounded-lg border">
                   {imageStyles.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-1">Modelo de Imagem IA</label>
-                <select value={imageModel} onChange={(e) => setImageModel(e.target.value)} className="block w-full pl-3 pr-10 py-2 text-base border-neutral-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-lg border">
+                <label className="block text-sm font-medium text-neutral-700 mb-1">Modelo de imagem</label>
+                <select value={imageModel} onChange={(e) => setImageModel(e.target.value)} className="block w-full pl-3 pr-10 py-2 text-base border-neutral-300 focus:outline-none focus:ring-[#FF6B35] focus:border-[#FF6B35] sm:text-sm rounded-lg border">
                   {imageModels.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                 </select>
               </div>
@@ -510,16 +561,34 @@ Retorne um JSON com:
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-neutral-700 mb-1">Proporção</label>
-                  <select value={aspectRatio} onChange={(e) => setAspectRatio(e.target.value)} className="block w-full pl-3 pr-10 py-2 text-base border-neutral-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-lg border">
+                  <select value={aspectRatio} onChange={(e) => setAspectRatio(e.target.value)} className="block w-full pl-3 pr-10 py-2 text-base border-neutral-300 focus:outline-none focus:ring-[#FF6B35] focus:border-[#FF6B35] sm:text-sm rounded-lg border">
                     {aspectRatios.map(ar => <option key={ar} value={ar}>{ar}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-neutral-700 mb-1">Resolução</label>
-                  <select value={imageSize} onChange={(e) => setImageSize(e.target.value)} className="block w-full pl-3 pr-10 py-2 text-base border-neutral-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-lg border">
+                  <select value={imageSize} onChange={(e) => setImageSize(e.target.value)} className="block w-full pl-3 pr-10 py-2 text-base border-neutral-300 focus:outline-none focus:ring-[#FF6B35] focus:border-[#FF6B35] sm:text-sm rounded-lg border">
                     {imageSizes.map(sz => <option key={sz} value={sz}>{sz}</option>)}
                   </select>
                 </div>
+              </div>
+
+              <div className="flex items-center justify-between p-3 bg-neutral-50 rounded-lg border border-neutral-200">
+                <div>
+                  <label className="block text-sm font-medium text-neutral-700">Texto na imagem</label>
+                  <p className="text-xs text-neutral-500">Adicionar título/headline na imagem gerada</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIncludeText(!includeText)}
+                  className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    includeText ? 'bg-[#FF6B35]' : 'bg-neutral-300'
+                  }`}
+                >
+                  <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                    includeText ? 'translate-x-5' : 'translate-x-0'
+                  }`} />
+                </button>
               </div>
 
               <button
@@ -528,9 +597,9 @@ Retorne um JSON com:
                 className="w-full flex justify-center items-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-neutral-900 hover:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-neutral-900 disabled:opacity-50 transition-colors"
               >
                 {isGenerating ? (
-                  <><Loader2 className="animate-spin -ml-1 mr-2 h-4 w-4" /> Gerando Copy...</>
+                  <><Loader2 className="animate-spin -ml-1 mr-2 h-4 w-4" /> Criando o texto...</>
                 ) : (
-                  <><Wand2 className="-ml-1 mr-2 h-4 w-4" /> Gerar Copy & Prompt</>
+                  <><Wand2 className="-ml-1 mr-2 h-4 w-4" /> Criar conteúdo</>
                 )}
               </button>
             </div>
@@ -541,13 +610,13 @@ Retorne um JSON com:
             {generatedContent && (
               <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden">
                 <div className="px-6 py-4 border-b border-neutral-200 bg-neutral-50 flex justify-between items-center">
-                  <h2 className="text-lg font-semibold text-neutral-900">Copy do Post</h2>
+                  <h2 className="text-lg font-semibold text-neutral-900 font-display">Copy do post</h2>
                   <button
                     onClick={() => copyToClipboard(`${generatedContent.hook}\n\n${generatedContent.caption}\n\n${generatedContent.cta}\n\n${generatedContent.hashtags}`, 'copy')}
                     className="inline-flex items-center px-3 py-1.5 border border-neutral-300 shadow-sm text-xs font-medium rounded text-neutral-700 bg-white hover:bg-neutral-50"
                   >
                     {copiedField === 'copy' ? <Check className="h-4 w-4 mr-1 text-emerald-500" /> : <Copy className="h-4 w-4 mr-1" />}
-                    Copiar Tudo
+                    Copiar tudo
                   </button>
                 </div>
                 <div className="p-6 space-y-4">
@@ -561,7 +630,7 @@ Retorne um JSON com:
                   </div>
                   <div>
                     <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1">CTA</h4>
-                    <p className="text-sm font-medium text-indigo-600">{generatedContent.cta}</p>
+                    <p className="text-sm font-medium text-[#FF6B35]">{generatedContent.cta}</p>
                   </div>
                   <div>
                     <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1">Hashtags</h4>
@@ -574,16 +643,16 @@ Retorne um JSON com:
             {generatedContent && (
               <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden">
                 <div className="px-6 py-4 border-b border-neutral-200 bg-neutral-50 flex justify-between items-center">
-                  <h2 className="text-lg font-semibold text-neutral-900 flex items-center gap-2">
-                    <Palette className="h-5 w-5 text-indigo-500" />
-                    Prompt de Imagem
+                  <h2 className="text-lg font-semibold text-neutral-900 flex items-center gap-2 font-display">
+                    <Palette className="h-5 w-5 text-[#FF8C5A]" />
+                    Prompt de imagem
                   </h2>
                   <button
                     onClick={() => copyToClipboard(generatedContent.image_prompt, 'prompt')}
                     className="inline-flex items-center px-3 py-1.5 border border-neutral-300 shadow-sm text-xs font-medium rounded text-neutral-700 bg-white hover:bg-neutral-50"
                   >
                     {copiedField === 'prompt' ? <Check className="h-4 w-4 mr-1 text-emerald-500" /> : <Copy className="h-4 w-4 mr-1" />}
-                    Copiar Prompt
+                    Copiar prompt
                   </button>
                 </div>
                 <div className="p-6">
@@ -594,19 +663,19 @@ Retorne um JSON com:
                     <button
                       onClick={handleGenerateImage}
                       disabled={isGeneratingImage}
-                      className="flex-1 flex justify-center items-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                      className="flex-1 flex justify-center items-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-[#FF6B35] hover:bg-[#E55A28] disabled:opacity-50 transition-colors"
                     >
                       {isGeneratingImage ? (
-                        <><Loader2 className="animate-spin -ml-1 mr-2 h-4 w-4" /> Gerando Imagem IA...</>
+                        <><Loader2 className="animate-spin -ml-1 mr-2 h-4 w-4" /> Pintando a arte...</>
                       ) : (
-                        <><ImageIcon className="-ml-1 mr-2 h-4 w-4" /> Gerar Imagem com IA</>
+                        <><ImageIcon className="-ml-1 mr-2 h-4 w-4" /> Criar imagem com IA</>
                       )}
                     </button>
                     <button
                       onClick={downloadCanvas}
                       className="flex-1 flex justify-center items-center py-2.5 px-4 border border-neutral-300 rounded-lg shadow-sm text-sm font-medium text-neutral-700 bg-white hover:bg-neutral-50 transition-colors"
                     >
-                      <Download className="-ml-1 mr-2 h-4 w-4" /> Baixar Card Tipográfico
+                      <Download className="-ml-1 mr-2 h-4 w-4" /> Baixar card
                     </button>
                   </div>
                 </div>
@@ -616,14 +685,14 @@ Retorne um JSON com:
             {/* Visual Previews */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               <div className={generatedContent ? 'block' : 'hidden'}>
-                <h3 className="text-sm font-medium text-neutral-700 mb-2">Card Tipográfico</h3>
+                <h3 className="text-sm font-medium text-neutral-700 mb-2">Card tipográfico</h3>
                 <div className="border border-neutral-200 rounded-lg overflow-hidden bg-neutral-100 flex items-center justify-center p-4">
                   <canvas ref={canvasRef} className="max-w-full h-auto shadow-md rounded" style={{ maxHeight: '400px', objectFit: 'contain' }} />
                 </div>
               </div>
               {generatedImageUrl && (
                 <div>
-                  <h3 className="text-sm font-medium text-neutral-700 mb-2">Imagem Gerada</h3>
+                  <h3 className="text-sm font-medium text-neutral-700 mb-2">Imagem gerada</h3>
                   <div className="border border-neutral-200 rounded-lg overflow-hidden bg-neutral-100 flex items-center justify-center p-4">
                     <img src={generatedImageUrl} alt="AI Generated" className="max-w-full h-auto shadow-md rounded" style={{ maxHeight: '400px', objectFit: 'contain' }} />
                   </div>
@@ -634,7 +703,7 @@ Retorne um JSON com:
             {!generatedContent && !isGenerating && (
               <div className="flex flex-col items-center justify-center h-48 text-center">
                 <Wand2 className="h-8 w-8 text-neutral-300 mb-3" />
-                <p className="text-sm text-neutral-400">Configure e clique em "Gerar Copy & Prompt" para criar conteúdo.</p>
+                <p className="text-sm text-neutral-400">Escolha as opções acima e clique em "Criar conteúdo".</p>
               </div>
             )}
           </div>

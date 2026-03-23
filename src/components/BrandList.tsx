@@ -32,7 +32,7 @@ export default function BrandList({ onSelectBrand, onCreateBrand }: Props) {
 
   const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm('Tem certeza que deseja excluir esta marca?')) return;
+    if (!confirm('Quer mesmo apagar essa marca? Isso remove tudo, inclusive os posts.')) return;
 
     setDeleting(id);
     await supabase.from('brands').delete().eq('id', id);
@@ -43,7 +43,7 @@ export default function BrandList({ onSelectBrand, onCreateBrand }: Props) {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin text-indigo-500" />
+        <Loader2 className="h-8 w-8 animate-spin text-[#FF8C5A]" />
       </div>
     );
   }
@@ -52,35 +52,35 @@ export default function BrandList({ onSelectBrand, onCreateBrand }: Props) {
     <div>
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h2 className="text-2xl font-bold text-neutral-900">Suas Marcas</h2>
+          <h2 className="text-2xl font-bold text-neutral-900 font-display">Suas marcas</h2>
           <p className="text-sm text-neutral-500 mt-1">
             {brands.length === 0 ? 'Nenhuma marca cadastrada ainda' : `${brands.length} marca${brands.length > 1 ? 's' : ''} cadastrada${brands.length > 1 ? 's' : ''}`}
           </p>
         </div>
         <button
           onClick={onCreateBrand}
-          className="inline-flex items-center px-4 py-2.5 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition-colors"
+          className="inline-flex items-center px-4 py-2.5 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-[#FF6B35] hover:bg-[#E55A28] transition-colors"
         >
           <Plus className="-ml-1 mr-2 h-4 w-4" />
-          Nova Marca
+          Criar marca
         </button>
       </div>
 
       {brands.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-64 text-center px-4 bg-white rounded-xl border border-neutral-200 border-dashed">
-          <div className="w-16 h-16 bg-indigo-50 rounded-full flex items-center justify-center mb-4">
-            <Palette className="h-8 w-8 text-indigo-500" />
+          <div className="w-16 h-16 bg-[#FFF1EB] rounded-full flex items-center justify-center mb-4">
+            <Palette className="h-8 w-8 text-[#FF8C5A]" />
           </div>
-          <h3 className="text-lg font-semibold text-neutral-900 mb-2">Comece cadastrando uma marca</h3>
+          <h3 className="text-lg font-semibold text-neutral-900 mb-2 font-display">Bora criar sua primeira marca?</h3>
           <p className="text-neutral-500 max-w-md mb-6">
-            Cole a URL de um site para escanear automaticamente ou cadastre manualmente.
+            Cola o link do seu site e a gente descobre as cores, o tom de voz e muito mais. Em segundos.
           </p>
           <button
             onClick={onCreateBrand}
-            className="inline-flex items-center px-4 py-2.5 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition-colors"
+            className="inline-flex items-center px-4 py-2.5 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-[#FF6B35] hover:bg-[#E55A28] transition-colors"
           >
             <Plus className="-ml-1 mr-2 h-4 w-4" />
-            Cadastrar Marca
+            Começar agora
           </button>
         </div>
       ) : (
@@ -89,7 +89,7 @@ export default function BrandList({ onSelectBrand, onCreateBrand }: Props) {
             <div
               key={brand.id}
               onClick={() => onSelectBrand(brand)}
-              className="bg-white rounded-xl border border-neutral-200 p-5 cursor-pointer hover:shadow-md hover:border-indigo-200 transition-all group"
+              className="bg-white rounded-xl border border-neutral-200 p-5 cursor-pointer hover:shadow-md hover:border-[#FFE0D0] transition-all group"
             >
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-3">
@@ -101,7 +101,7 @@ export default function BrandList({ onSelectBrand, onCreateBrand }: Props) {
                     </div>
                   )}
                   <div>
-                    <h3 className="font-semibold text-neutral-900 group-hover:text-indigo-600 transition-colors">{brand.name}</h3>
+                    <h3 className="font-semibold text-neutral-900 group-hover:text-[#FF6B35] transition-colors">{brand.name}</h3>
                     {brand.product_type && (
                       <span className="text-xs text-neutral-500 capitalize">{brand.product_type}</span>
                     )}
@@ -156,10 +156,10 @@ export default function BrandList({ onSelectBrand, onCreateBrand }: Props) {
           {/* Add new brand card */}
           <div
             onClick={onCreateBrand}
-            className="bg-white rounded-xl border-2 border-dashed border-neutral-200 p-5 cursor-pointer hover:border-indigo-300 hover:bg-indigo-50/30 transition-all flex flex-col items-center justify-center min-h-[160px]"
+            className="bg-white rounded-xl border-2 border-dashed border-neutral-200 p-5 cursor-pointer hover:border-[#FF8C5A] hover:bg-[#FFF1EB]/30 transition-all flex flex-col items-center justify-center min-h-[160px]"
           >
             <Plus className="h-8 w-8 text-neutral-300 mb-2" />
-            <span className="text-sm font-medium text-neutral-400">Nova Marca</span>
+            <span className="text-sm font-medium text-neutral-400">Criar marca</span>
           </div>
         </div>
       )}

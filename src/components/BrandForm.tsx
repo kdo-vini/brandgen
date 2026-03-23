@@ -41,7 +41,7 @@ export default function BrandForm({ existingBrand, onSaved, onCancel }: Props) {
 
   const handleScan = async () => {
     if (!url) {
-      setError('Insira uma URL para escanear.');
+      setError('Cola uma URL pra analisar.');
       return;
     }
 
@@ -64,7 +64,7 @@ export default function BrandForm({ existingBrand, onSaved, onCancel }: Props) {
 
       if (!scrapeRes.ok) {
         const errData = await scrapeRes.json();
-        throw new Error(errData.error || 'Erro ao extrair dados do site.');
+        throw new Error(errData.error || 'Não conseguimos acessar esse site. Confere o link e tenta de novo?');
       }
 
       const scraped: ScrapeResult = await scrapeRes.json();
@@ -131,7 +131,7 @@ Retorne um JSON com:
       setDescription(scraped.description || '');
 
     } catch (err: any) {
-      setError(err.message || 'Erro durante o escaneamento.');
+      setError(err.message || 'Deu ruim aqui. Tenta de novo?');
     } finally {
       setIsScraping(false);
       setIsAnalyzing(false);
@@ -140,7 +140,7 @@ Retorne um JSON com:
 
   const handleSave = async () => {
     if (!name.trim()) {
-      setError('Nome da marca é obrigatório.');
+      setError('Coloca o nome da marca, vai!');
       return;
     }
 
@@ -193,7 +193,7 @@ Retorne um JSON com:
         onSaved(data as Brand);
       }
     } catch (err: any) {
-      setError(err.message || 'Erro ao salvar marca.');
+      setError(err.message || 'Erro ao salvar. Tenta de novo?');
     } finally {
       setIsSaving(false);
     }
@@ -209,14 +209,14 @@ Retorne um JSON com:
           <ArrowLeft className="h-4 w-4 mr-1" />
           Voltar
         </button>
-        <h2 className="text-2xl font-bold text-neutral-900">
-          {existingBrand ? 'Editar Marca' : 'Nova Marca'}
+        <h2 className="text-2xl font-bold text-neutral-900 font-display">
+          {existingBrand ? 'Editar marca' : 'Nova marca'}
         </h2>
       </div>
 
       {/* Auto-scan section */}
       <div className="bg-white rounded-xl border border-neutral-200 p-6 mb-6">
-        <h3 className="text-sm font-semibold text-neutral-700 mb-3">Escaneamento Automático</h3>
+        <h3 className="text-sm font-semibold text-neutral-700 mb-3">Análise automática</h3>
         <div className="flex gap-3">
           <div className="relative flex-1">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -227,25 +227,25 @@ Retorne um JSON com:
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               placeholder="https://exemplo.com"
-              className="block w-full pl-10 pr-3 py-2 border border-neutral-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+              className="block w-full pl-10 pr-3 py-2 border border-neutral-300 rounded-lg focus:ring-[#FF6B35] focus:border-[#FF6B35] sm:text-sm"
             />
           </div>
           <button
             onClick={handleScan}
             disabled={isScraping || isAnalyzing || !url}
-            className="inline-flex items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+            className="inline-flex items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-[#FF6B35] hover:bg-[#E55A28] disabled:opacity-50 transition-colors"
           >
             {isScraping ? (
-              <><Loader2 className="animate-spin mr-2 h-4 w-4" /> Extraindo...</>
+              <><Loader2 className="animate-spin mr-2 h-4 w-4" /> Acessando o site...</>
             ) : isAnalyzing ? (
-              <><Loader2 className="animate-spin mr-2 h-4 w-4" /> Analisando...</>
+              <><Loader2 className="animate-spin mr-2 h-4 w-4" /> A IA tá analisando...</>
             ) : (
-              <><Wand2 className="mr-2 h-4 w-4" /> Escanear</>
+              <><Wand2 className="mr-2 h-4 w-4" /> Analisar site</>
             )}
           </button>
         </div>
         <p className="text-xs text-neutral-400 mt-2">
-          O scan preenche os campos abaixo automaticamente. Você pode ajustar o que quiser.
+          Cola o link e a gente descobre as cores, o tom e tudo mais. Você ajusta o que quiser depois.
         </p>
       </div>
 
@@ -257,18 +257,18 @@ Retorne um JSON com:
 
       {/* Manual form */}
       <div className="bg-white rounded-xl border border-neutral-200 p-6 space-y-6">
-        <h3 className="text-sm font-semibold text-neutral-700">Dados da Marca</h3>
+        <h3 className="text-sm font-semibold text-neutral-700">Sua marca</h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Name */}
           <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-1">Nome da Marca *</label>
+            <label className="block text-sm font-medium text-neutral-700 mb-1">Nome da marca *</label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Minha Marca"
-              className="block w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+              placeholder="Minha marca"
+              className="block w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-[#FF6B35] focus:border-[#FF6B35] sm:text-sm"
             />
           </div>
 
@@ -280,7 +280,7 @@ Retorne um JSON com:
               value={instagramHandle}
               onChange={(e) => setInstagramHandle(e.target.value)}
               placeholder="@minha_marca"
-              className="block w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+              className="block w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-[#FF6B35] focus:border-[#FF6B35] sm:text-sm"
             />
           </div>
 
@@ -290,7 +290,7 @@ Retorne um JSON com:
             <select
               value={productType}
               onChange={(e) => setProductType(e.target.value)}
-              className="block w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+              className="block w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-[#FF6B35] focus:border-[#FF6B35] sm:text-sm"
             >
               {productTypes.map(t => <option key={t} value={t} className="capitalize">{t}</option>)}
             </select>
@@ -302,7 +302,7 @@ Retorne um JSON com:
             <select
               value={tone}
               onChange={(e) => setTone(e.target.value)}
-              className="block w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+              className="block w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-[#FF6B35] focus:border-[#FF6B35] sm:text-sm"
             >
               {tones.map(t => <option key={t} value={t} className="capitalize">{t}</option>)}
             </select>
@@ -314,7 +314,7 @@ Retorne um JSON com:
             <select
               value={language}
               onChange={(e) => setLanguage(e.target.value)}
-              className="block w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+              className="block w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-[#FF6B35] focus:border-[#FF6B35] sm:text-sm"
             >
               {languages.map(l => <option key={l} value={l}>{l}</option>)}
             </select>
@@ -326,7 +326,7 @@ Retorne um JSON com:
             <select
               value={emojiStyle}
               onChange={(e) => setEmojiStyle(e.target.value)}
-              className="block w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+              className="block w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-[#FF6B35] focus:border-[#FF6B35] sm:text-sm"
             >
               {emojiStyles.map(e => <option key={e} value={e} className="capitalize">{e}</option>)}
             </select>
@@ -335,7 +335,7 @@ Retorne um JSON com:
 
         {/* Colors */}
         <div>
-          <label className="block text-sm font-medium text-neutral-700 mb-2">Cores da Marca</label>
+          <label className="block text-sm font-medium text-neutral-700 mb-2">Cores da marca</label>
           <div className="flex items-center gap-6">
             <div className="flex items-center gap-2">
               <label className="text-xs text-neutral-500">Primária</label>
@@ -373,20 +373,20 @@ Retorne um JSON com:
               {colors.map((c, i) => (
                 <div key={i} className="w-6 h-6 rounded-full border border-neutral-200" style={{ backgroundColor: c }} title={c} />
               ))}
-              <span className="text-xs text-neutral-400 self-center ml-2">Paleta extraída</span>
+              <span className="text-xs text-neutral-400 self-center ml-2">Paleta do site</span>
             </div>
           )}
         </div>
 
         {/* Logo URL */}
         <div>
-          <label className="block text-sm font-medium text-neutral-700 mb-1">URL do Logo</label>
+          <label className="block text-sm font-medium text-neutral-700 mb-1">URL do logo</label>
           <input
             type="url"
             value={logoUrl}
             onChange={(e) => setLogoUrl(e.target.value)}
             placeholder="https://exemplo.com/logo.png"
-            className="block w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+            className="block w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-[#FF6B35] focus:border-[#FF6B35] sm:text-sm"
           />
           {logoUrl && (
             <img src={logoUrl} alt="Logo preview" className="mt-2 h-12 object-contain" />
@@ -395,35 +395,35 @@ Retorne um JSON com:
 
         {/* Text fields */}
         <div>
-          <label className="block text-sm font-medium text-neutral-700 mb-1">Público-Alvo</label>
+          <label className="block text-sm font-medium text-neutral-700 mb-1">Público-alvo</label>
           <input
             type="text"
             value={targetAudience}
             onChange={(e) => setTargetAudience(e.target.value)}
             placeholder="Empreendedores digitais de 25-40 anos"
-            className="block w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+            className="block w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-[#FF6B35] focus:border-[#FF6B35] sm:text-sm"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-neutral-700 mb-1">Proposta de Valor</label>
+          <label className="block text-sm font-medium text-neutral-700 mb-1">Proposta de valor</label>
           <textarea
             value={valueProposition}
             onChange={(e) => setValueProposition(e.target.value)}
             placeholder="A proposta de valor principal da marca..."
             rows={2}
-            className="block w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+            className="block w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-[#FF6B35] focus:border-[#FF6B35] sm:text-sm"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-neutral-700 mb-1">Dor Principal do Cliente</label>
+          <label className="block text-sm font-medium text-neutral-700 mb-1">Principal dor do cliente</label>
           <textarea
             value={keyPain}
             onChange={(e) => setKeyPain(e.target.value)}
             placeholder="O principal problema que o produto resolve..."
             rows={2}
-            className="block w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+            className="block w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-[#FF6B35] focus:border-[#FF6B35] sm:text-sm"
           />
         </div>
 
@@ -434,7 +434,7 @@ Retorne um JSON com:
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Descrição geral da marca..."
             rows={3}
-            className="block w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+            className="block w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-[#FF6B35] focus:border-[#FF6B35] sm:text-sm"
           />
         </div>
 
@@ -445,7 +445,7 @@ Retorne um JSON com:
             value={keywords}
             onChange={(e) => setKeywords(e.target.value)}
             placeholder="produtividade, automação, marketing (separadas por vírgula)"
-            className="block w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+            className="block w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-[#FF6B35] focus:border-[#FF6B35] sm:text-sm"
           />
         </div>
 
@@ -460,12 +460,12 @@ Retorne um JSON com:
           <button
             onClick={handleSave}
             disabled={isSaving || !name.trim()}
-            className="inline-flex items-center px-6 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+            className="inline-flex items-center px-6 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-[#FF6B35] hover:bg-[#E55A28] disabled:opacity-50 transition-colors"
           >
             {isSaving ? (
               <><Loader2 className="animate-spin mr-2 h-4 w-4" /> Salvando...</>
             ) : (
-              <><Save className="mr-2 h-4 w-4" /> Salvar Marca</>
+              <><Save className="mr-2 h-4 w-4" /> Salvar marca</>
             )}
           </button>
         </div>

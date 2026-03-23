@@ -55,7 +55,7 @@ export default function PostHistory({ brandId }: Props) {
     return (
       <div className="text-center py-8">
         <Clock className="h-8 w-8 text-neutral-300 mx-auto mb-2" />
-        <p className="text-sm text-neutral-400">Nenhum post gerado ainda para esta marca.</p>
+        <p className="text-sm text-neutral-400">Nenhum post ainda. Que tal criar o primeiro?</p>
       </div>
     );
   }
@@ -107,7 +107,7 @@ export default function PostHistory({ brandId }: Props) {
                 <div>
                   <div className="flex items-center justify-between">
                     <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">Hook</h4>
-                    <button onClick={() => copyToClipboard(post.hook!, `hook-${post.id}`)} className="text-neutral-400 hover:text-indigo-500">
+                    <button onClick={() => copyToClipboard(post.hook!, `hook-${post.id}`)} className="text-neutral-400 hover:text-[#FF6B35]">
                       {copiedField === `hook-${post.id}` ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
                     </button>
                   </div>
@@ -119,7 +119,7 @@ export default function PostHistory({ brandId }: Props) {
                 <div>
                   <div className="flex items-center justify-between">
                     <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">Legenda</h4>
-                    <button onClick={() => copyToClipboard(post.caption!, `caption-${post.id}`)} className="text-neutral-400 hover:text-indigo-500">
+                    <button onClick={() => copyToClipboard(post.caption!, `caption-${post.id}`)} className="text-neutral-400 hover:text-[#FF6B35]">
                       {copiedField === `caption-${post.id}` ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
                     </button>
                   </div>
@@ -130,7 +130,7 @@ export default function PostHistory({ brandId }: Props) {
               {post.cta && (
                 <div>
                   <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">CTA</h4>
-                  <p className="text-sm font-medium text-indigo-600 mt-1">{post.cta}</p>
+                  <p className="text-sm font-medium text-[#FF6B35] mt-1">{post.cta}</p>
                 </div>
               )}
 
@@ -145,7 +145,7 @@ export default function PostHistory({ brandId }: Props) {
                 <div>
                   <div className="flex items-center justify-between">
                     <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">Image Prompt</h4>
-                    <button onClick={() => copyToClipboard(post.image_prompt!, `prompt-${post.id}`)} className="text-neutral-400 hover:text-indigo-500">
+                    <button onClick={() => copyToClipboard(post.image_prompt!, `prompt-${post.id}`)} className="text-neutral-400 hover:text-[#FF6B35]">
                       {copiedField === `prompt-${post.id}` ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
                     </button>
                   </div>

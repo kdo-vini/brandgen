@@ -44,22 +44,22 @@ export default function App() {
 
   if (!hasApiKey) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-neutral-50 p-4">
+      <div className="min-h-screen flex items-center justify-center bg-[#FFF8F0] p-4">
         <div className="bg-white p-8 rounded-xl shadow-sm border border-neutral-200 max-w-md w-full text-center">
-          <div className="w-16 h-16 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-6">
-            <Key className="h-8 w-8 text-indigo-500" />
+          <div className="w-16 h-16 bg-[#FFF1EB] rounded-full flex items-center justify-center mx-auto mb-6">
+            <Key className="h-8 w-8 text-[#FF8C5A]" />
           </div>
-          <h2 className="text-2xl font-bold text-neutral-900 mb-4">API Key Necessária</h2>
+          <h2 className="text-2xl font-bold text-neutral-900 mb-4 font-display">API Key Necessária</h2>
           <p className="text-neutral-600 mb-8">
-            Para utilizar os modelos avançados de geração de imagem (Nano Banana 2 e Nano Banana Pro), você precisa selecionar uma chave de API do Google Cloud com faturamento ativado.
+            Para usar os modelos avançados de geração de imagem, você precisa selecionar uma chave de API do Google Cloud com faturamento ativado.
             <br/><br/>
-            <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noreferrer" className="text-indigo-600 hover:text-indigo-800 font-medium hover:underline">
+            <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noreferrer" className="text-[#FF6B35] hover:text-[#E55A28] font-medium hover:underline">
               Saiba mais sobre faturamento
             </a>
           </p>
           <button
             onClick={handleSelectKey}
-            className="w-full bg-indigo-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-indigo-700 transition-colors shadow-sm"
+            className="w-full bg-[#FF6B35] text-white px-6 py-3 rounded-lg font-medium hover:bg-[#E55A28] transition-colors shadow-sm"
           >
             Selecionar API Key
           </button>
@@ -69,7 +69,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-neutral-50 text-neutral-900 font-sans">
+    <div className="min-h-screen bg-[#FFF8F0] text-neutral-900 font-sans">
       {/* Top Nav */}
       <header className="bg-white border-b border-neutral-200 px-6 py-4 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
@@ -77,13 +77,13 @@ export default function App() {
             className="flex items-center gap-2 cursor-pointer"
             onClick={() => { setView('list'); setSelectedBrand(null); }}
           >
-            <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold">
-              B
+            <div className="w-8 h-8 rounded-lg bg-[#FF6B35] flex items-center justify-center text-white font-bold">
+              C
             </div>
-            <h1 className="text-xl font-bold tracking-tight">BrandGen</h1>
+            <h1 className="text-xl font-bold tracking-tight font-display">Criaê</h1>
           </div>
           <div className="text-xs text-neutral-400">
-            Powered by Gemini 3.1 Pro & Flash Image
+            O seu marketeiro pessoal ✦
           </div>
         </div>
       </header>

@@ -99,7 +99,7 @@ export default function AssetUploader({ brandId }: Props) {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-semibold text-neutral-700">Fotos de Produto & Referências</h3>
+        <h3 className="text-sm font-semibold text-neutral-700">Fotos de produto e referências</h3>
         <label className="inline-flex items-center px-3 py-1.5 border border-neutral-300 rounded-lg text-xs font-medium text-neutral-700 bg-white hover:bg-neutral-50 cursor-pointer transition-colors">
           {uploading ? (
             <><Loader2 className="animate-spin mr-1.5 h-3.5 w-3.5" /> Enviando...</>
@@ -125,10 +125,10 @@ export default function AssetUploader({ brandId }: Props) {
       ) : assets.length === 0 ? (
         <div
           onClick={() => fileInputRef.current?.click()}
-          className="border-2 border-dashed border-neutral-200 rounded-lg p-8 text-center cursor-pointer hover:border-indigo-300 hover:bg-indigo-50/30 transition-all"
+          className="border-2 border-dashed border-neutral-200 rounded-lg p-8 text-center cursor-pointer hover:border-[#FF8C5A] hover:bg-[#FFF1EB]/30 transition-all"
         >
           <ImageIcon className="h-8 w-8 text-neutral-300 mx-auto mb-2" />
-          <p className="text-sm text-neutral-400">Clique ou arraste para enviar fotos de produto</p>
+          <p className="text-sm text-neutral-400">Arrasta as fotos do produto aqui</p>
           <p className="text-xs text-neutral-300 mt-1">JPG, PNG, WebP</p>
         </div>
       ) : (
@@ -160,7 +160,7 @@ export default function AssetUploader({ brandId }: Props) {
           {/* Add more button */}
           <div
             onClick={() => fileInputRef.current?.click()}
-            className="border-2 border-dashed border-neutral-200 rounded-lg flex flex-col items-center justify-center min-h-[128px] cursor-pointer hover:border-indigo-300 transition-colors"
+            className="border-2 border-dashed border-neutral-200 rounded-lg flex flex-col items-center justify-center min-h-[128px] cursor-pointer hover:border-[#FF8C5A] transition-colors"
           >
             <Upload className="h-5 w-5 text-neutral-300 mb-1" />
             <span className="text-xs text-neutral-400">Adicionar</span>
