@@ -46,6 +46,7 @@ export type MarketerPreferences = {
   ctaIntensity: CtaIntensity;
   creativeNotes: string;
   angleOverride: string;
+  campaignBrief: string;
 };
 
 type Option<T extends string> = {
@@ -57,61 +58,61 @@ type Option<T extends string> = {
 export const COPY_APPROACH_OPTIONS: Option<CopyApproach>[] = [
   {
     value: "auto",
-    label: "Automatico",
+    label: "Automático",
     hint: "A IA escolhe a estrutura mais adequada ao tipo de post.",
   },
   {
     value: "direct",
     label: "Direto",
-    hint: "Vai ao ponto rapido, com menos introducao e mais clareza.",
+    hint: "Vai ao ponto rápido, com menos introdução e mais clareza.",
   },
   {
     value: "storytelling",
     label: "Storytelling",
-    hint: "Puxa por cena, tensao e virada antes da oferta.",
+    hint: "Puxa por cena, tensão e virada antes da oferta.",
   },
   {
     value: "educational",
     label: "Educativo",
-    hint: "Ensina algo util com clareza e logica.",
+    hint: "Ensina algo útil com clareza e lógica.",
   },
   {
     value: "proof",
     label: "Prova social",
-    hint: "Abre com resultado, caso ou confianca.",
+    hint: "Abre com resultado, caso ou confiança.",
   },
   {
     value: "provocative",
     label: "Provocativo",
-    hint: "Entra com contraste, pergunta forte ou quebra de padrao.",
+    hint: "Entra com contraste, pergunta forte ou quebra de padrão.",
   },
 ];
 
 export const OBJECTIVE_OPTIONS: Option<PostObjective>[] = [
   {
     value: "auto",
-    label: "Automatico",
-    hint: "A Criae decide a meta mais adequada para esse tipo de post.",
+    label: "Automático",
+    hint: "A Criaê decide a meta mais adequada para esse tipo de post.",
   },
   {
     value: "awareness",
     label: "Atrair",
-    hint: "Abrir interesse, curiosidade e lembranca de marca.",
+    hint: "Abrir interesse, curiosidade e lembrança de marca.",
   },
   {
     value: "consideration",
-    label: "Consideracao",
-    hint: "Explicar melhor a proposta e reduzir objecoes.",
+    label: "Consideração",
+    hint: "Explicar melhor a proposta e reduzir objeções.",
   },
   {
     value: "conversion",
-    label: "Conversao",
+    label: "Conversão",
     hint: "Levar para clique, compra, teste ou contato.",
   },
   {
     value: "retention",
-    label: "Retencao",
-    hint: "Trazer quem ja conhece a marca de volta para a acao.",
+    label: "Retenção",
+    hint: "Trazer quem já conhece a marca de volta para a ação.",
   },
   { value: 'offer', label: 'Oferta', hint: 'Comunicar uma oferta, promoção ou condição especial.' },
   { value: 'authority', label: 'Autoridade', hint: 'Posicionar a marca como referência no segmento.' },
@@ -124,12 +125,12 @@ export const TONE_OVERRIDE_OPTIONS: Option<ToneOverride>[] = [
   {
     value: "brand",
     label: "Da marca",
-    hint: "Mantem a voz principal da marca.",
+    hint: "Mantém a voz principal da marca.",
   },
   {
     value: "casual",
     label: "Mais casual",
-    hint: "Mais proximo, leve e conversado.",
+    hint: "Mais próximo, leve e conversado.",
   },
   {
     value: "premium",
@@ -138,13 +139,13 @@ export const TONE_OVERRIDE_OPTIONS: Option<ToneOverride>[] = [
   },
   {
     value: "technical",
-    label: "Mais tecnico",
-    hint: "Mais preciso, claro e orientado a informacao.",
+    label: "Mais técnico",
+    hint: "Mais preciso, claro e orientado a informação.",
   },
   {
     value: "sales",
     label: "Mais comercial",
-    hint: "Mais orientado a conversao e acao.",
+    hint: "Mais orientado a conversão e ação.",
   },
 ];
 
@@ -152,17 +153,17 @@ export const EMOJI_USAGE_OPTIONS: Option<EmojiUsage>[] = [
   {
     value: "followBrand",
     label: "Seguir a marca",
-    hint: "Usa a marca como referencia, sem assumir exagero.",
+    hint: "Usa a marca como referência, sem assumir exagero.",
   },
   {
     value: "none",
     label: "Sem emoji",
-    hint: "Nao usa emoji em hook, legenda ou CTA.",
+    hint: "Não usa emoji em hook, legenda ou CTA.",
   },
   {
     value: "minimal",
     label: "Pouco emoji",
-    hint: "No maximo um ou dois, so quando fizer sentido.",
+    hint: "No máximo um ou dois, só quando fizer sentido.",
   },
   {
     value: "moderate",
@@ -174,35 +175,35 @@ export const EMOJI_USAGE_OPTIONS: Option<EmojiUsage>[] = [
 export const CAPTION_STYLE_OPTIONS: Option<CaptionStyle>[] = [
   {
     value: "auto",
-    label: "Automatica",
-    hint: "A estrutura acompanha o objetivo da peca.",
+    label: "Automática",
+    hint: "A estrutura acompanha o objetivo da peça.",
   },
   {
     value: "short",
     label: "Curta",
-    hint: "Poucas linhas, leitura rapida.",
+    hint: "Poucas linhas, leitura rápida.",
   },
   {
     value: "medium",
-    label: "Media",
+    label: "Média",
     hint: "Mais contexto sem ficar longa.",
   },
   {
     value: "miniStory",
     label: "Mini-story",
-    hint: "Comeco, tensao e desfecho em poucos blocos.",
+    hint: "Começo, tensão e desfecho em poucos blocos.",
   },
   {
     value: "list",
     label: "Lista / passos",
-    hint: "Formato escaneavel, bom para dica e tutorial.",
+    hint: "Formato escaneável, bom para dica e tutorial.",
   },
 ];
 
 export const CTA_INTENSITY_OPTIONS: Option<CtaIntensity>[] = [
   {
     value: "auto",
-    label: "Automatico",
+    label: "Automático",
     hint: "A intensidade acompanha o objetivo do post.",
   },
   {
@@ -212,13 +213,13 @@ export const CTA_INTENSITY_OPTIONS: Option<CtaIntensity>[] = [
   },
   {
     value: "medium",
-    label: "Media",
+    label: "Média",
     hint: "Clara e objetiva, sem soar agressiva.",
   },
   {
     value: "hard",
     label: "Forte",
-    hint: "Mais direta, urgente e orientada a conversao.",
+    hint: "Mais direta, urgente e orientada a conversão.",
   },
 ];
 
@@ -231,10 +232,11 @@ export const DEFAULT_MARKETER_PREFERENCES: MarketerPreferences = {
   ctaIntensity: "auto",
   creativeNotes: "",
   angleOverride: "",
+  campaignBrief: "",
 };
 
 const copyApproachLabels: Record<CopyApproach, string> = {
-  auto: "estrutura automatica",
+  auto: "estrutura automática",
   direct: "direto",
   storytelling: "storytelling",
   educational: "educativo",
@@ -243,12 +245,12 @@ const copyApproachLabels: Record<CopyApproach, string> = {
 };
 
 const objectiveLabels: Record<PostObjective, string> = {
-  auto: "objetivo automatico",
+  auto: "objetivo automático",
   awareness: "atrair",
-  consideration: "consideracao",
-  conversion: "conversao",
-  retention: "retencao",
-  launch: "lancamento",
+  consideration: "consideração",
+  conversion: "conversão",
+  retention: "retenção",
+  launch: "lançamento",
   offer: "oferta",
   authority: "autoridade",
   community: "comunidade",
@@ -260,7 +262,7 @@ const toneOverrideLabels: Record<ToneOverride, string> = {
   brand: "voz da marca",
   casual: "mais casual",
   premium: "mais premium",
-  technical: "mais tecnico",
+  technical: "mais técnico",
   sales: "mais comercial",
 };
 
@@ -272,17 +274,17 @@ const emojiUsageLabels: Record<EmojiUsage, string> = {
 };
 
 const captionStyleLabels: Record<CaptionStyle, string> = {
-  auto: "estrutura automatica",
+  auto: "estrutura automática",
   short: "curta",
-  medium: "media",
+  medium: "média",
   miniStory: "mini-story",
   list: "lista",
 };
 
 const ctaIntensityLabels: Record<CtaIntensity, string> = {
-  auto: "automatico",
+  auto: "automático",
   soft: "suave",
-  medium: "medio",
+  medium: "médio",
   hard: "forte",
 };
 
@@ -294,6 +296,7 @@ export function normalizeMarketerPreferences(
     ...preferences,
     creativeNotes: (preferences?.creativeNotes || "").trim(),
     angleOverride: (preferences?.angleOverride || "").trim(),
+    campaignBrief: (preferences?.campaignBrief || "").trim(),
   };
 }
 

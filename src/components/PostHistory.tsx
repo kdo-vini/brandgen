@@ -144,7 +144,7 @@ export default function PostHistory({ brandId }: Props) {
               {post.image_prompt && (
                 <div>
                   <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">Image Prompt</h4>
+                    <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">Prompt de imagem</h4>
                     <button onClick={() => copyToClipboard(post.image_prompt!, `prompt-${post.id}`)} className="text-neutral-400 hover:text-[#FF6B35]">
                       {copiedField === `prompt-${post.id}` ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
                     </button>
@@ -169,7 +169,7 @@ export default function PostHistory({ brandId }: Props) {
                 className="inline-flex items-center px-3 py-1.5 border border-neutral-300 rounded-lg text-xs font-medium text-neutral-700 bg-white hover:bg-neutral-50 transition-colors"
               >
                 {copiedField === `all-${post.id}` ? <Check className="h-3.5 w-3.5 mr-1.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5 mr-1.5" />}
-                Copiar Tudo
+                Copiar tudo
               </button>
             </div>
           )}

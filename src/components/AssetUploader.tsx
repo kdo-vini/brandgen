@@ -111,7 +111,7 @@ export default function AssetUploader({ user, brandId }: Props) {
             className="rounded-lg border border-neutral-300 bg-white px-2.5 py-1.5 text-xs font-medium text-neutral-600 focus:border-[#FF6B35] focus:outline-none focus:ring-[#FF6B35]"
           >
             <option value="product_photo">Produto</option>
-            <option value="reference">Referencia</option>
+            <option value="reference">Referência</option>
             <option value="logo">Logo</option>
             <option value="packaging">Embalagem</option>
             <option value="environment">Ambiente</option>

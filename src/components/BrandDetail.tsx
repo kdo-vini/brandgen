@@ -86,7 +86,7 @@ const formatAspectRatios: Record<string, string> = {
   'Capa de Destaque (1080x1920, foco central)': '9:16',
 };
 const imageModels = [
-  { id: 'auto', name: 'Automatico (Recomendado)', type: 'auto' },
+  { id: 'auto', name: 'Automático (Recomendado)', type: 'auto' },
   { id: 'gemini-3-pro-image-preview', name: 'Nano Banana Pro', type: 'nanoBanana' },
   { id: 'gemini-3.1-flash-image-preview', name: 'Nano Banana Flash', type: 'nanoBanana' },
   { id: 'imagen-4.0-ultra-generate-001', name: 'Imagen 4 Ultra', type: 'imagen' },
@@ -127,7 +127,7 @@ const toneLabels: Record<string, string> = {
   formal: 'Formal',
   casual: 'Casual',
   bold: 'Ousado',
-  friendly: 'Amigavel',
+  friendly: 'Amigável',
 };
 
 const emojiStyleLabels: Record<string, string> = {
@@ -146,7 +146,7 @@ function formatToneLabel(value?: string | null) {
 }
 
 function formatEmojiStyleLabel(value?: string | null) {
-  if (!value) return 'Nao mapeado';
+  if (!value) return 'Não mapeado';
   return emojiStyleLabels[value] || value;
 }
 
@@ -424,7 +424,7 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
         image_text: field === 'image_text' ? value : null,
         image_prompt: field === 'image_prompt' ? value : null,
       }).catch(() => {
-        onError?.('Atualizei na tela, mas nao consegui salvar no historico.');
+        onError?.('Atualizei na tela, mas não consegui salvar no histórico.');
       });
     }
   };
@@ -436,7 +436,7 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
       }
 
       if (prev.length >= 3) {
-        onError?.('Escolhe ate 3 assets por vez pra IA nao viajar.');
+        onError?.('Escolhe até 3 assets por vez pra IA não viajar.');
         return prev;
       }
 
@@ -445,12 +445,12 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
   };
 
   const GENERATION_STAGES = [
-    { pct: 12, msg: 'Estudando sua marca... 🧠',              delay: 800 },
-    { pct: 28, msg: 'Definindo o ângulo do post... 💡',       delay: 4500 },
-    { pct: 48, msg: 'Escrevendo o copy... ✍️',               delay: 10000 },
-    { pct: 65, msg: 'Construindo o brief visual... 🎨',       delay: 16000 },
+    { pct: 12, msg: 'Estudando sua marca... 🧠', delay: 800 },
+    { pct: 28, msg: 'Definindo o ângulo do post... 💡', delay: 4500 },
+    { pct: 48, msg: 'Escrevendo o copy... ✍️', delay: 10000 },
+    { pct: 65, msg: 'Construindo o brief visual... 🎨', delay: 16000 },
     { pct: 82, msg: 'O crítico tá avaliando o conteúdo... 🔍', delay: 22000 },
-    { pct: 92, msg: 'Finalizando os detalhes... ⚡',           delay: 28000 },
+    { pct: 92, msg: 'Finalizando os detalhes... ⚡', delay: 28000 },
     { pct: 97, msg: 'Quase lá, segura mais um segundo... 🙏', delay: 35000 },
   ];
 
@@ -588,21 +588,21 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
           .single();
 
         if (fallbackInsertError) {
-          onError?.('O post saiu, mas nao consegui salvar no historico.');
+          onError?.('O post saiu, mas não consegui salvar no histórico.');
         } else if (fallbackInsert?.id) {
           insertedPost = fallbackInsert as { id: string };
         }
       } else if (extendedInsertError) {
-        onError?.('O post saiu, mas nao consegui salvar no historico.');
+        onError?.('O post saiu, mas não consegui salvar no histórico.');
       }
 
       if (insertedPost?.id) {
         setCurrentPostId(insertedPost.id);
       } else {
-        onError?.('O post saiu, mas nao consegui salvar no historico.');
+        onError?.('O post saiu, mas não consegui salvar no histórico.');
       }
 
-      onSuccess?.('Post criado. Agora voce pode revisar e copiar.');
+      onSuccess?.('Post criado. Agora você pode revisar e copiar.');
 
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'A IA viajou 😅 Tenta mais uma vez?';
@@ -635,7 +635,7 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
 
       if (!imageRes.ok) {
         const errData = await imageRes.json();
-        throw new Error(errData.error || 'Nao consegui gerar a imagem. Tenta de novo?');
+        throw new Error(errData.error || 'Não consegui gerar a imagem. Tenta de novo?');
       }
 
       const { imageBase64 } = await imageRes.json();
@@ -670,7 +670,7 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
         }
       }
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Nao consegui gerar a imagem. Tenta de novo?';
+      const message = err instanceof Error ? err.message : 'Não consegui gerar a imagem. Tenta de novo?';
       onError?.(message);
     } finally {
       setIsGeneratingImage(false);
@@ -700,7 +700,7 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
 
       if (!res.ok) {
         const errData = await res.json();
-        throw new Error(errData.error || 'Nao consegui refazer esse campo.');
+        throw new Error(errData.error || 'Não consegui refazer esse campo.');
       }
 
       const newContent: GeneratedContent = await res.json();
@@ -736,7 +736,7 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
       };
       onSuccess?.(`${fieldNames[field]} refeito.`);
     } catch (err: unknown) {
-      onError?.(err instanceof Error ? err.message : 'Nao consegui refazer esse campo.');
+      onError?.(err instanceof Error ? err.message : 'Não consegui refazer esse campo.');
     } finally {
       setRegeneratingField(null);
     }
@@ -794,7 +794,7 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
       markCopied('generated-image');
       onSuccess?.('Imagem copiada como link local.');
     } catch {
-      onError?.('Nao consegui copiar a imagem.');
+      onError?.('Não consegui copiar a imagem.');
     }
   };
 
@@ -830,7 +830,7 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'generate', label: 'Criar post', icon: <Wand2 className="h-4 w-4" /> },
     { id: 'assets', label: 'Assets', icon: <Package className="h-4 w-4" /> },
-    { id: 'history', label: 'Historico', icon: <Clock className="h-4 w-4" /> },
+    { id: 'history', label: 'Histórico', icon: <Clock className="h-4 w-4" /> },
   ];
 
   return (
@@ -937,7 +937,23 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
               </h2>
 
               <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-1">Tipo de post</label>
+                <label className="block text-sm font-medium text-neutral-700 mb-1">Me conta do que você precisa?</label>
+                <textarea
+                  value={marketerPreferences.campaignBrief}
+                  onChange={(e) => updateMarketerPreference('campaignBrief', e.target.value)}
+                  rows={2}
+                  placeholder="Ex: Promoção de pizza a R$59,90 com Coca 2L inclusa"
+                  className="block w-full rounded-lg border border-neutral-300 p-3 text-sm text-neutral-700 resize-y focus:border-[#FF6B35] focus:outline-none focus:ring-[#FF6B35]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 mb-1">
+                  Tipo de post
+                  {marketerPreferences.campaignBrief && (
+                    <span className="ml-1.5 text-xs font-normal text-neutral-400">(opcional — a IA vai inferir do que você escreveu)</span>
+                  )}
+                </label>
                 <select value={postType} onChange={(e) => setPostType(e.target.value)} className="block w-full pl-3 pr-10 py-2 text-base border-neutral-300 focus:outline-none focus:ring-[#FF6B35] focus:border-[#FF6B35] sm:text-sm rounded-lg border">
                   {postTypes.map(t => <option key={t.id} value={t.id}>{stripLeadingSymbol(t.label)}</option>)}
                 </select>
@@ -969,8 +985,8 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
 
               <div className="space-y-4 rounded-2xl border border-neutral-200 bg-[#FCFAF8] p-4">
                 <div className="space-y-1">
-                  <label className="block text-sm font-medium text-neutral-800">Direcao editorial</label>
-                  <p className="text-xs text-neutral-500">A Criae planeja a estrategia antes de escrever. Aqui voce so ajusta o que realmente muda a peca.</p>
+                  <label className="block text-sm font-medium text-neutral-800">Direção editorial</label>
+                  <p className="text-xs text-neutral-500">A Criaê planeja a estratégia antes de escrever. Aqui você só ajusta o que realmente muda a peça.</p>
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -1039,14 +1055,14 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
                     className="flex w-full items-center justify-between text-xs font-medium text-neutral-700"
                   >
                     <span className="flex items-center gap-1.5">
-                      Angulo criativo manual
+                      Ângulo criativo manual
                       {marketerPreferences.angleOverride && <span className="h-1.5 w-1.5 rounded-full bg-[#FF6B35]" />}
                     </span>
                     {angleControlsOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                   </button>
                   {angleControlsOpen && (
                     <div className="mt-3 space-y-2">
-                      <p className="text-[11px] text-neutral-400">Forca a IA a usar esse angulo especifico no copy e na imagem. Deixa em branco pra deixar a IA decidir.</p>
+                      <p className="text-[11px] text-neutral-400">Força a IA a usar esse ângulo específico no copy e na imagem. Deixa em branco pra deixar a IA decidir.</p>
                       <textarea
                         value={marketerPreferences.angleOverride}
                         onChange={(e) => updateMarketerPreference('angleOverride', e.target.value)}
@@ -1063,14 +1079,14 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
                 </div>
 
                 <p className="text-xs text-neutral-500">
-                  Direcao atual: <span className="font-medium text-neutral-700">{marketerSummary}</span>
+                  Direção atual: <span className="font-medium text-neutral-700">{marketerSummary}</span>
                 </p>
               </div>
 
               <div className="space-y-4 rounded-2xl border border-neutral-200 bg-white p-4">
                 <div className="space-y-1">
-                  <label className="block text-sm font-medium text-neutral-800">Geracao de imagem</label>
-                  <p className="text-xs text-neutral-500">O formato ja define a proporcao automaticamente.</p>
+                  <label className="block text-sm font-medium text-neutral-800">Geração de imagem</label>
+                  <p className="text-xs text-neutral-500">O formato já define a proporção automaticamente.</p>
                 </div>
 
                 <div className="grid grid-cols-1 gap-4">
@@ -1094,7 +1110,7 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
                       onClick={() => setAdvancedControlsOpen(prev => !prev)}
                       className="flex w-full items-center justify-between text-xs font-medium text-neutral-700"
                     >
-                      <span>Ajustes avancados de imagem</span>
+                      <span>Ajustes avançados de imagem</span>
                       {advancedControlsOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                     </button>
                     {advancedControlsOpen && (
@@ -1109,7 +1125,7 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
                           )}
                         </div>
                         <div>
-                          <label className="mb-1 block text-xs font-medium text-neutral-600">Resolucao</label>
+                          <label className="mb-1 block text-xs font-medium text-neutral-600">Resolução</label>
                           <select value={imageSize} onChange={(e) => setImageSize(e.target.value)} className="block w-full rounded-lg border border-neutral-300 py-2 pl-3 pr-10 text-sm focus:border-[#FF6B35] focus:outline-none focus:ring-[#FF6B35]">
                             {imageSizes.map(sz => <option key={sz} value={sz}>{sz}</option>)}
                           </select>
@@ -1124,7 +1140,7 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
                 <div className="flex items-center justify-between">
                   <div>
                     <label className="block text-sm font-medium text-neutral-700">Assets reais</label>
-                    <p className="text-xs text-neutral-500">Seleciona ate 3 fotos pra guiar o copy e, com Nano Banana, editar a imagem final.</p>
+                    <p className="text-xs text-neutral-500">Seleciona até 3 fotos pra guiar o copy e, com Nano Banana, editar a imagem final.</p>
                   </div>
                   <span className="text-xs font-medium text-neutral-400">{selectedAssets.length}/3</span>
                 </div>
@@ -1186,7 +1202,7 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
                   onClick={handleGenerateContent}
                   className="w-full flex justify-center items-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-neutral-900 hover:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-neutral-900 transition-colors"
                 >
-                  <Wand2 className="-ml-1 mr-2 h-4 w-4" /> Criar conteudo
+                  <Wand2 className="-ml-1 mr-2 h-4 w-4" /> Criar conteúdo
                 </motion.button>
               )}
             </div>
@@ -1203,7 +1219,7 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
                         <Target className="h-4 w-4" />
                       </div>
                       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-400">Plano criativo</p>
-                      <h3 className="text-base font-semibold text-neutral-900 font-display">A Criae decidiu o angulo antes da copy</h3>
+                      <h3 className="text-base font-semibold text-neutral-900 font-display">A Criaê decidiu o ângulo antes da copy</h3>
                     </div>
                     <span className="rounded-full bg-[#FFF1EB] px-3 py-1 text-xs font-medium text-[#FF6B35]">
                       {generatedContent.strategy.objective}
@@ -1249,7 +1265,7 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
                         <div className="space-y-1">
                           <p className="text-xs font-semibold text-amber-800">Revisa antes de gerar a imagem</p>
                           {generatedContent.critic.overallScore < 7 && (
-                            <p className="text-xs text-amber-700">Score geral abaixo de 7 ({generatedContent.critic.overallScore.toFixed(1)}/10). Edite ou refaca algum campo.</p>
+                            <p className="text-xs text-amber-700">Score geral abaixo de 7 ({generatedContent.critic.overallScore.toFixed(1)}/10). Edite ou refaça algum campo.</p>
                           )}
                           {generatedContent.critic.aiSlopRisk > 4 && (
                             <p className="text-xs text-amber-700">Risco alto de cliche de IA (aiSlopRisk {generatedContent.critic.aiSlopRisk}/10). Use "refazer" no hook ou legenda.</p>
@@ -1264,7 +1280,7 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
                             </button>
                           )}
                           {criticGateAcknowledged && (
-                            <p className="mt-1 text-xs font-medium text-emerald-700">Ok, pode gerar a imagem la embaixo.</p>
+                            <p className="mt-1 text-xs font-medium text-emerald-700">Ok, pode gerar a imagem lá embaixo.</p>
                           )}
                         </div>
                       </div>
@@ -1298,7 +1314,7 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
                   className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden"
                 >
                   <div className="px-6 py-4 border-b border-neutral-200 bg-neutral-50 flex justify-between items-center">
-                    <h2 className="text-lg font-semibold text-neutral-900 font-display">Seu post esta pronto</h2>
+                    <h2 className="text-lg font-semibold text-neutral-900 font-display">Seu post está pronto</h2>
                     <button
                       onClick={() => copyToClipboard(`${editedContent?.hook}\n\n${editedContent?.caption}\n\n${editedContent?.cta}\n\n${editedContent?.hashtags}`, 'copy')}
                       className="inline-flex items-center px-3 py-1.5 border border-neutral-300 shadow-sm text-xs font-medium rounded text-neutral-700 bg-white hover:bg-neutral-50"
@@ -1378,7 +1394,7 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
                     )}
                   </div>
                   <div className="px-6 pb-4">
-                    <p className="text-xs text-neutral-400">Clique em qualquer texto para editar ou use "refazer" para gerar so aquele campo de novo.</p>
+                    <p className="text-xs text-neutral-400">Clique em qualquer texto para editar ou use "refazer" para gerar só aquele campo de novo.</p>
                   </div>
                 </motion.div>
               )}
@@ -1568,7 +1584,7 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
             {!generatedContent && !isGenerating && (
               <div className="flex flex-col items-center justify-center h-48 text-center">
                 <Wand2 className="h-8 w-8 text-neutral-300 mb-3" />
-                <p className="text-sm text-neutral-400">Escolha o tipo de post acima para comecar.</p>
+                <p className="text-sm text-neutral-400">Escolha o tipo de post acima para começar.</p>
               </div>
             )}
           </div>
