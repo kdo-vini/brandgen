@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Loader2, Wand2, Link as LinkIcon, Save, ArrowLeft } from 'lucide-react';
+import { motion } from 'motion/react';
 import { GoogleGenAI, Type } from '@google/genai';
 import { supabase } from '../lib/supabase';
 import type { Brand, ScrapeResult, GeminiAnalysis } from '../types';
@@ -8,6 +9,8 @@ type Props = {
   existingBrand?: Brand | null;
   onSaved: (brand: Brand) => void;
   onCancel: () => void;
+  onError?: (msg: string) => void;
+  onSuccess?: (msg: string) => void;
 };
 
 const productTypes = ['saas', 'ecommerce', 'food', 'service', 'other'];
@@ -15,12 +18,17 @@ const tones = ['formal', 'casual', 'bold', 'friendly'];
 const languages = ['pt-BR', 'en', 'es'];
 const emojiStyles = ['minimal', 'moderate', 'heavy'];
 
-export default function BrandForm({ existingBrand, onSaved, onCancel }: Props) {
+const loadingSteps = [
+  'Abrindo o site... 🌐',
+  'Lendo as cores e textos... 🎨',
+  'A IA tá analisando sua marca... 🤖',
+  'Quase lá, só um instante... ✨',
+];
+
+export default function BrandForm({ existingBrand, onSaved, onCancel, onError, onSuccess }: Props) {
   const [url, setUrl] = useState(existingBrand?.url || '');
-  const [isScraping, setIsScraping] = useState(false);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [loadingStep, setLoadingStep] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState('');
 
   const [name, setName] = useState(existingBrand?.name || '');
   const [instagramHandle, setInstagramHandle] = useState(existingBrand?.instagram_handle || '');
@@ -41,7 +49,7 @@ export default function BrandForm({ existingBrand, onSaved, onCancel }: Props) {
 
   const handleScan = async () => {
     if (!url) {
-      setError('Cola uma URL pra analisar.');
+      onError?.('Opa, cola uma URL aí primeiro! 👆');
       return;
     }
 
@@ -51,8 +59,7 @@ export default function BrandForm({ existingBrand, onSaved, onCancel }: Props) {
       setUrl(formattedUrl);
     }
 
-    setError('');
-    setIsScraping(true);
+    setLoadingStep(loadingSteps[0]);
 
     try {
       // Step 1: Scrape
@@ -64,15 +71,16 @@ export default function BrandForm({ existingBrand, onSaved, onCancel }: Props) {
 
       if (!scrapeRes.ok) {
         const errData = await scrapeRes.json();
-        throw new Error(errData.error || 'Não conseguimos acessar esse site. Confere o link e tenta de novo?');
+        throw new Error(errData.error || 'Esse site não quis abrir a porta pra gente 😅 Confere o link e tenta de novo?');
       }
 
       const scraped: ScrapeResult = await scrapeRes.json();
 
-      setIsScraping(false);
-      setIsAnalyzing(true);
+      await new Promise(resolve => setTimeout(resolve, 300));
+      setLoadingStep(loadingSteps[1]);
 
       // Step 2: Analyze with Gemini
+      setLoadingStep(loadingSteps[2]);
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
       const prompt = `Analise esta marca com base nos dados extraídos do site:
 URL: ${scraped.url}
@@ -115,6 +123,8 @@ Retorne um JSON com:
 
       const analysis: GeminiAnalysis = JSON.parse(response.text || '{}');
 
+      setLoadingStep(loadingSteps[3]);
+
       // Fill form with scan results
       setName(analysis.brand_name || scraped.title || '');
       setLogoUrl(scraped.logo_url || '');
@@ -130,21 +140,22 @@ Retorne um JSON com:
       setEmojiStyle(analysis.emoji_style || 'moderate');
       setDescription(scraped.description || '');
 
-    } catch (err: any) {
-      setError(err.message || 'Deu ruim aqui. Tenta de novo?');
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Ih, travou! Tenta de novo? 🔄';
+      onError?.(message);
     } finally {
-      setIsScraping(false);
-      setIsAnalyzing(false);
+      setLoadingStep(null);
     }
   };
 
   const handleSave = async () => {
     if (!name.trim()) {
-      setError('Coloca o nome da marca, vai!');
+      onError?.('Ei, precisa de um nome! 😄');
       return;
     }
 
-    setError('');
     setIsSaving(true);
 
     const brandData = {
@@ -181,6 +192,7 @@ Retorne um JSON com:
           .single();
 
         if (dbError) throw dbError;
+        onSuccess?.('Marca salva! Arrasou 🎉');
         onSaved(data as Brand);
       } else {
         const { data, error: dbError } = await supabase
@@ -190,10 +202,11 @@ Retorne um JSON com:
           .single();
 
         if (dbError) throw dbError;
+        onSuccess?.('Marca salva! Arrasou 🎉');
         onSaved(data as Brand);
       }
-    } catch (err: any) {
-      setError(err.message || 'Erro ao salvar. Tenta de novo?');
+    } catch (err: unknown) {
+      onError?.('Deu ruim ao salvar 😬 Tenta mais uma vez?');
     } finally {
       setIsSaving(false);
     }
@@ -207,7 +220,7 @@ Retorne um JSON com:
           className="inline-flex items-center text-sm text-neutral-500 hover:text-neutral-700 transition-colors"
         >
           <ArrowLeft className="h-4 w-4 mr-1" />
-          Voltar
+          ← Voltar
         </button>
         <h2 className="text-2xl font-bold text-neutral-900 font-display">
           {existingBrand ? 'Editar marca' : 'Nova marca'}
@@ -216,7 +229,7 @@ Retorne um JSON com:
 
       {/* Auto-scan section */}
       <div className="bg-white rounded-xl border border-neutral-200 p-6 mb-6">
-        <h3 className="text-sm font-semibold text-neutral-700 mb-3">Análise automática</h3>
+        <h3 className="text-sm font-semibold text-neutral-700 mb-3">Análise automática ✨</h3>
         <div className="flex gap-3">
           <div className="relative flex-1">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -226,38 +239,31 @@ Retorne um JSON com:
               type="url"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://exemplo.com"
+              placeholder="https://suamarca.com.br"
               className="block w-full pl-10 pr-3 py-2 border border-neutral-300 rounded-lg focus:ring-[#FF6B35] focus:border-[#FF6B35] sm:text-sm"
             />
           </div>
-          <button
+          <motion.button
+            whileTap={{ scale: 0.97 }}
             onClick={handleScan}
-            disabled={isScraping || isAnalyzing || !url}
+            disabled={!!loadingStep || !url}
             className="inline-flex items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-[#FF6B35] hover:bg-[#E55A28] disabled:opacity-50 transition-colors"
           >
-            {isScraping ? (
-              <><Loader2 className="animate-spin mr-2 h-4 w-4" /> Acessando o site...</>
-            ) : isAnalyzing ? (
-              <><Loader2 className="animate-spin mr-2 h-4 w-4" /> A IA tá analisando...</>
+            {loadingStep ? (
+              <><Loader2 className="animate-spin mr-2 h-4 w-4" /> {loadingStep}</>
             ) : (
               <><Wand2 className="mr-2 h-4 w-4" /> Analisar site</>
             )}
-          </button>
+          </motion.button>
         </div>
         <p className="text-xs text-neutral-400 mt-2">
-          Cola o link e a gente descobre as cores, o tom e tudo mais. Você ajusta o que quiser depois.
+          Cola o link do site e a gente faz a mágica. Você ajusta o que quiser depois 😉
         </p>
       </div>
 
-      {error && (
-        <div className="p-3 bg-red-50 text-red-700 text-sm rounded-lg border border-red-100 mb-6">
-          {error}
-        </div>
-      )}
-
       {/* Manual form */}
       <div className="bg-white rounded-xl border border-neutral-200 p-6 space-y-6">
-        <h3 className="text-sm font-semibold text-neutral-700">Sua marca</h3>
+        <h3 className="text-sm font-semibold text-neutral-700">Sobre a marca</h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Name */}
@@ -279,14 +285,14 @@ Retorne um JSON com:
               type="text"
               value={instagramHandle}
               onChange={(e) => setInstagramHandle(e.target.value)}
-              placeholder="@minha_marca"
+              placeholder="@suamarca"
               className="block w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-[#FF6B35] focus:border-[#FF6B35] sm:text-sm"
             />
           </div>
 
           {/* Product Type */}
           <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-1">Tipo de Produto</label>
+            <label className="block text-sm font-medium text-neutral-700 mb-1">Tipo de produto</label>
             <select
               value={productType}
               onChange={(e) => setProductType(e.target.value)}
@@ -298,7 +304,7 @@ Retorne um JSON com:
 
           {/* Tone */}
           <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-1">Tom de Voz</label>
+            <label className="block text-sm font-medium text-neutral-700 mb-1">Tom de voz</label>
             <select
               value={tone}
               onChange={(e) => setTone(e.target.value)}
@@ -322,7 +328,7 @@ Retorne um JSON com:
 
           {/* Emoji Style */}
           <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-1">Estilo de Emoji</label>
+            <label className="block text-sm font-medium text-neutral-700 mb-1">Uso de emojis</label>
             <select
               value={emojiStyle}
               onChange={(e) => setEmojiStyle(e.target.value)}
@@ -336,9 +342,9 @@ Retorne um JSON com:
         {/* Colors */}
         <div>
           <label className="block text-sm font-medium text-neutral-700 mb-2">Cores da marca</label>
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-6 flex-wrap">
             <div className="flex items-center gap-2">
-              <label className="text-xs text-neutral-500">Primária</label>
+              <label className="text-xs text-neutral-500">Principal</label>
               <input
                 type="color"
                 value={primaryColor}
@@ -369,11 +375,11 @@ Retorne um JSON com:
             </div>
           </div>
           {colors.length > 0 && (
-            <div className="flex gap-1.5 mt-3">
+            <div className="flex gap-1.5 mt-3 items-center">
               {colors.map((c, i) => (
                 <div key={i} className="w-6 h-6 rounded-full border border-neutral-200" style={{ backgroundColor: c }} title={c} />
               ))}
-              <span className="text-xs text-neutral-400 self-center ml-2">Paleta do site</span>
+              <span className="text-xs text-neutral-400 ml-2">Paleta extraída do site</span>
             </div>
           )}
         </div>
@@ -400,7 +406,7 @@ Retorne um JSON com:
             type="text"
             value={targetAudience}
             onChange={(e) => setTargetAudience(e.target.value)}
-            placeholder="Empreendedores digitais de 25-40 anos"
+            placeholder="Ex: empreendedores digitais de 25-40 anos"
             className="block w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-[#FF6B35] focus:border-[#FF6B35] sm:text-sm"
           />
         </div>
@@ -410,29 +416,29 @@ Retorne um JSON com:
           <textarea
             value={valueProposition}
             onChange={(e) => setValueProposition(e.target.value)}
-            placeholder="A proposta de valor principal da marca..."
+            placeholder="O que torna sua marca única?"
             rows={2}
             className="block w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-[#FF6B35] focus:border-[#FF6B35] sm:text-sm"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-neutral-700 mb-1">Principal dor do cliente</label>
+          <label className="block text-sm font-medium text-neutral-700 mb-1">Dor principal do cliente</label>
           <textarea
             value={keyPain}
             onChange={(e) => setKeyPain(e.target.value)}
-            placeholder="O principal problema que o produto resolve..."
+            placeholder="Qual problema você resolve?"
             rows={2}
             className="block w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-[#FF6B35] focus:border-[#FF6B35] sm:text-sm"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-neutral-700 mb-1">Descrição</label>
+          <label className="block text-sm font-medium text-neutral-700 mb-1">Descrição da marca</label>
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Descrição geral da marca..."
+            placeholder="Uma visão geral sobre a sua marca..."
             rows={3}
             className="block w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-[#FF6B35] focus:border-[#FF6B35] sm:text-sm"
           />
@@ -444,7 +450,7 @@ Retorne um JSON com:
             type="text"
             value={keywords}
             onChange={(e) => setKeywords(e.target.value)}
-            placeholder="produtividade, automação, marketing (separadas por vírgula)"
+            placeholder="produtividade, automação, marketing (separa por vírgula)"
             className="block w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-[#FF6B35] focus:border-[#FF6B35] sm:text-sm"
           />
         </div>

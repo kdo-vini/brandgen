@@ -5,10 +5,13 @@
 
 import React, { useState, useEffect } from 'react';
 import { Key } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
 import type { Brand, AppView } from './types';
 import BrandList from './components/BrandList';
 import BrandForm from './components/BrandForm';
 import BrandDetail from './components/BrandDetail';
+import ToastContainer from './components/Toast';
+import { useToast } from './hooks/useToast';
 
 // Global type for AI Studio
 declare global {
@@ -20,10 +23,19 @@ declare global {
   }
 }
 
+const pageVariants = {
+  initial: { opacity: 0, y: 16 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 0, y: -8 },
+};
+
+const pageTransition = { duration: 0.2, ease: 'easeOut' as const };
+
 export default function App() {
   const [hasApiKey, setHasApiKey] = useState<boolean>(true);
   const [view, setView] = useState<AppView>('list');
   const [selectedBrand, setSelectedBrand] = useState<Brand | null>(null);
+  const { toasts, addToast, removeToast } = useToast();
 
   useEffect(() => {
     const checkApiKey = async () => {
@@ -49,11 +61,18 @@ export default function App() {
           <div className="w-16 h-16 bg-[#FFF1EB] rounded-full flex items-center justify-center mx-auto mb-6">
             <Key className="h-8 w-8 text-[#FF8C5A]" />
           </div>
-          <h2 className="text-2xl font-bold text-neutral-900 mb-4 font-display">API Key Necessária</h2>
+          <h2 className="text-2xl font-bold text-neutral-900 mb-4 font-display">
+            Precisamos de uma API Key 🔑
+          </h2>
           <p className="text-neutral-600 mb-8">
-            Para usar os modelos avançados de geração de imagem, você precisa selecionar uma chave de API do Google Cloud com faturamento ativado.
-            <br/><br/>
-            <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noreferrer" className="text-[#FF6B35] hover:text-[#E55A28] font-medium hover:underline">
+            Pra usar os modelos de imagem do Gemini, você precisa de uma chave da Google Cloud com faturamento ativo. É rapidinho de configurar!
+            <br /><br />
+            <a
+              href="https://ai.google.dev/gemini-api/docs/billing"
+              target="_blank"
+              rel="noreferrer"
+              className="text-[#FF6B35] hover:text-[#E55A28] font-medium hover:underline"
+            >
               Saiba mais sobre faturamento
             </a>
           </p>
@@ -61,7 +80,7 @@ export default function App() {
             onClick={handleSelectKey}
             className="w-full bg-[#FF6B35] text-white px-6 py-3 rounded-lg font-medium hover:bg-[#E55A28] transition-colors shadow-sm"
           >
-            Selecionar API Key
+            Configurar minha API Key
           </button>
         </div>
       </div>
@@ -90,54 +109,101 @@ export default function App() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-6 py-8">
-        {view === 'list' && (
-          <BrandList
-            onSelectBrand={(brand) => {
-              setSelectedBrand(brand);
-              setView('detail');
-            }}
-            onCreateBrand={() => {
-              setSelectedBrand(null);
-              setView('create');
-            }}
-          />
-        )}
+        <AnimatePresence mode="wait">
+          {view === 'list' && (
+            <motion.div
+              key="list"
+              variants={pageVariants}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+              transition={pageTransition}
+            >
+              <BrandList
+                onSelectBrand={(brand) => {
+                  setSelectedBrand(brand);
+                  setView('detail');
+                }}
+                onCreateBrand={() => {
+                  setSelectedBrand(null);
+                  setView('create');
+                }}
+                onError={addToast}
+              />
+            </motion.div>
+          )}
 
-        {view === 'create' && (
-          <BrandForm
-            onSaved={(brand) => {
-              setSelectedBrand(brand);
-              setView('detail');
-            }}
-            onCancel={() => setView('list')}
-          />
-        )}
+          {view === 'create' && (
+            <motion.div
+              key="create"
+              variants={pageVariants}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+              transition={pageTransition}
+            >
+              <BrandForm
+                onSaved={(brand) => {
+                  setSelectedBrand(brand);
+                  setView('detail');
+                }}
+                onCancel={() => setView('list')}
+                onError={addToast}
+                onSuccess={(msg) => addToast(msg, 'success')}
+              />
+            </motion.div>
+          )}
 
-        {view === 'edit' && selectedBrand && (
-          <BrandForm
-            existingBrand={selectedBrand}
-            onSaved={(brand) => {
-              setSelectedBrand(brand);
-              setView('detail');
-            }}
-            onCancel={() => setView('detail')}
-          />
-        )}
+          {view === 'edit' && selectedBrand && (
+            <motion.div
+              key="edit"
+              variants={pageVariants}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+              transition={pageTransition}
+            >
+              <BrandForm
+                existingBrand={selectedBrand}
+                onSaved={(brand) => {
+                  setSelectedBrand(brand);
+                  setView('detail');
+                }}
+                onCancel={() => setView('detail')}
+                onError={addToast}
+                onSuccess={(msg) => addToast(msg, 'success')}
+              />
+            </motion.div>
+          )}
 
-        {view === 'detail' && selectedBrand && (
-          <BrandDetail
-            brand={selectedBrand}
-            onBack={() => {
-              setView('list');
-              setSelectedBrand(null);
-            }}
-            onEdit={(brand) => {
-              setSelectedBrand(brand);
-              setView('edit');
-            }}
-          />
-        )}
+          {view === 'detail' && selectedBrand && (
+            <motion.div
+              key="detail"
+              variants={pageVariants}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+              transition={pageTransition}
+            >
+              <BrandDetail
+                brand={selectedBrand}
+                onBack={() => {
+                  setView('list');
+                  setSelectedBrand(null);
+                }}
+                onEdit={(brand) => {
+                  setSelectedBrand(brand);
+                  setView('edit');
+                }}
+                onError={addToast}
+                onSuccess={(msg) => addToast(msg, 'success')}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </main>
+
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>
   );
 }

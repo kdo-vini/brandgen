@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 import type { Brand, GeneratedContent, BrandAsset } from '../types';
 import AssetUploader from './AssetUploader';
 import PostHistory from './PostHistory';
+import TypographicCard from './TypographicCard';
 
 type Props = {
   brand: Brand;
@@ -125,8 +126,10 @@ export default function BrandDetail({ brand, onBack, onEdit }: Props) {
   const [error, setError] = useState('');
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [isRescanning, setIsRescanning] = useState(false);
+  const [editablePrompt, setEditablePrompt] = useState('');
+  const [selectedTemplate, setSelectedTemplate] = useState(0);
 
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
 
   const handleRescan = async () => {
     if (!brand.url) return;
@@ -220,7 +223,7 @@ Retorne um JSON com:
 
   1. ESTILO VISUAL OBRIGATÓRIO: ${styleDescription}
 
-  2. COMPOSIÇÃO: Descreva um design de post para redes sociais com layout profissional. NÃO gere ilustrações vetoriais, flat design, clipart, ou ícones simples. A imagem deve parecer um template premium de design criado no Canva ou Adobe Express.
+  2. COMPOSIÇÃO: A imagem gerada É o próprio post final — ela deve preencher o frame completo sem nenhuma borda, moldura, sombra externa ou background adicional ao redor. NÃO gere um mockup de post, NÃO coloque a imagem dentro de um quadrado com fundo extra, NÃO simule como um post apareceria numa tela. A imagem deve ter elementos visuais de alta qualidade: fotografia profissional, gradientes, formas, luz. Proibido: flat design, vetores simples, clipart, (ícones cartoon.
 
   3. FOTOGRAFIA: Se relevante ao produto (${brand.product_type}), inclua elementos fotográficos realistas — produto com iluminação profissional, mockups, ou cenas lifestyle. Use composição em camadas com o produto sobre o background estilizado.
 
@@ -258,6 +261,7 @@ Retorne um JSON com:
 
       const content: GeneratedContent = JSON.parse(response.text || '{}');
       setGeneratedContent(content);
+      setEditablePrompt(content.image_prompt);
 
       // Save to generated_posts
       await supabase.from('generated_posts').insert({
@@ -274,9 +278,6 @@ Retorne um JSON com:
         hashtags: content.hashtags,
         image_prompt: content.image_prompt,
       });
-
-      // Draw preview card
-      setTimeout(() => drawPreviewCard(content.hook, content.cta), 100);
 
     } catch (err: any) {
       setError(err.message || 'Deu ruim na geração. Tenta mais uma vez?');
@@ -300,7 +301,7 @@ Retorne um JSON com:
         // Imagen API uses generateImages()
         const response = await ai.models.generateImages({
           model: imageModel,
-          prompt: generatedContent.image_prompt,
+          prompt: editablePrompt,
           config: {
             numberOfImages: 1,
             aspectRatio: aspectRatio as any,
@@ -319,7 +320,7 @@ Retorne um JSON com:
         const response = await ai.models.generateContent({
           model: imageModel,
           contents: {
-            parts: [{ text: generatedContent.image_prompt }]
+            parts: [{ text: editablePrompt }]
           },
           config: {
             imageConfig: {
@@ -344,69 +345,39 @@ Retorne um JSON com:
     }
   };
 
-  const drawPreviewCard = (hook: string, cta: string) => {
-    if (!canvasRef.current) return;
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const isVertical = format.includes('1080x1920');
-    canvas.width = 1080;
-    canvas.height = isVertical ? 1920 : 1080;
-
-    const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-    gradient.addColorStop(0, `${brand.primary_color}ff`);
-    gradient.addColorStop(1, `${brand.secondary_color}44`);
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    ctx.fillStyle = '#ffffff';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-
-    const fontSize = isVertical ? 80 : 72;
-    ctx.font = `bold ${fontSize}px Inter, sans-serif`;
-
-    const words = hook.split(' ');
-    let line = '';
-    let y = canvas.height / 2 - (isVertical ? 200 : 100);
-    const maxWidth = canvas.width - 200;
-
-    for (let n = 0; n < words.length; n++) {
-      const testLine = line + words[n] + ' ';
-      const metrics = ctx.measureText(testLine);
-      if (metrics.width > maxWidth && n > 0) {
-        ctx.fillText(line, canvas.width / 2, y);
-        line = words[n] + ' ';
-        y += fontSize * 1.2;
-      } else {
-        line = testLine;
-      }
-    }
-    ctx.fillText(line, canvas.width / 2, y);
-
-    ctx.fillStyle = brand.secondary_color || '#facc15';
-    ctx.font = `bold ${fontSize * 0.5}px Inter, sans-serif`;
-    ctx.fillText(cta, canvas.width / 2, canvas.height - (isVertical ? 300 : 150));
-
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-    ctx.font = '24px Inter, sans-serif';
-    ctx.textAlign = 'right';
-    ctx.fillText('Criaê', canvas.width - 40, canvas.height - 40);
-  };
-
   const copyToClipboard = (text: string, field: string) => {
     navigator.clipboard.writeText(text);
     setCopiedField(field);
     setTimeout(() => setCopiedField(null), 2000);
   };
 
-  const downloadCanvas = () => {
-    if (!canvasRef.current) return;
-    const link = document.createElement('a');
-    link.download = `criae-${brand.name}-${Date.now()}.png`;
-    link.href = canvasRef.current.toDataURL('image/png');
-    link.click();
+  const downloadCard = () => {
+    if (!cardRef.current) return;
+
+    const cardId = 'criae-card-print';
+    cardRef.current.id = cardId;
+
+    const style = document.createElement('style');
+    style.id = 'criae-print-style';
+    style.innerHTML = `
+      @media print {
+        body * { visibility: hidden !important; }
+        #${cardId}, #${cardId} * { visibility: visible !important; }
+        #${cardId} { position: fixed !important; left: 0 !important; top: 0 !important; width: 100vw !important; height: 100vh !important; border-radius: 0 !important; }
+      }
+    `;
+    document.head.appendChild(style);
+
+    window.print();
+
+    // Clean up after the print dialog closes
+    const cleanup = () => {
+      const s = document.getElementById('criae-print-style');
+      if (s) s.remove();
+      if (cardRef.current) cardRef.current.removeAttribute('id');
+      window.removeEventListener('afterprint', cleanup);
+    };
+    window.addEventListener('afterprint', cleanup);
   };
 
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
@@ -648,7 +619,7 @@ Retorne um JSON com:
                     Prompt de imagem
                   </h2>
                   <button
-                    onClick={() => copyToClipboard(generatedContent.image_prompt, 'prompt')}
+                    onClick={() => copyToClipboard(editablePrompt, 'prompt')}
                     className="inline-flex items-center px-3 py-1.5 border border-neutral-300 shadow-sm text-xs font-medium rounded text-neutral-700 bg-white hover:bg-neutral-50"
                   >
                     {copiedField === 'prompt' ? <Check className="h-4 w-4 mr-1 text-emerald-500" /> : <Copy className="h-4 w-4 mr-1" />}
@@ -656,13 +627,27 @@ Retorne um JSON com:
                   </button>
                 </div>
                 <div className="p-6">
-                  <p className="text-sm text-neutral-700 bg-neutral-50 p-4 rounded-lg border border-neutral-200 font-mono">
-                    {generatedContent.image_prompt}
-                  </p>
-                  <div className="mt-6 flex flex-col sm:flex-row gap-4">
+                  <textarea
+                    value={editablePrompt}
+                    onChange={(e) => setEditablePrompt(e.target.value)}
+                    rows={6}
+                    className="w-full text-sm text-neutral-700 bg-neutral-50 p-4 rounded-lg border border-neutral-200 font-mono resize-y focus:outline-none focus:ring-2 focus:ring-[#FF6B35] focus:border-transparent"
+                    placeholder="Edite o prompt antes de gerar a imagem..."
+                  />
+                  <p className="text-xs text-neutral-400 mt-1">Edite livremente antes de gerar — as alterações não afetam o conteúdo do post.</p>
+                  <div className="mt-4 flex flex-col sm:flex-row gap-4">
+                    <button
+                      onClick={() => { const r = generatedContent?.image_prompt; if (r) setEditablePrompt(r); }}
+                      className="inline-flex items-center px-3 py-1.5 border border-neutral-300 rounded-lg text-xs font-medium text-neutral-600 bg-white hover:bg-neutral-50 transition-colors"
+                      title="Restaurar prompt gerado pela IA"
+                    >
+                      <RefreshCw className="h-3.5 w-3.5 mr-1.5" /> Restaurar original
+                    </button>
+                  </div>
+                  <div className="mt-3 flex flex-col sm:flex-row gap-4">
                     <button
                       onClick={handleGenerateImage}
-                      disabled={isGeneratingImage}
+                      disabled={isGeneratingImage || !editablePrompt.trim()}
                       className="flex-1 flex justify-center items-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-[#FF6B35] hover:bg-[#E55A28] disabled:opacity-50 transition-colors"
                     >
                       {isGeneratingImage ? (
@@ -672,8 +657,9 @@ Retorne um JSON com:
                       )}
                     </button>
                     <button
-                      onClick={downloadCanvas}
-                      className="flex-1 flex justify-center items-center py-2.5 px-4 border border-neutral-300 rounded-lg shadow-sm text-sm font-medium text-neutral-700 bg-white hover:bg-neutral-50 transition-colors"
+                      onClick={downloadCard}
+                      disabled={!generatedContent}
+                      className="flex-1 flex justify-center items-center py-2.5 px-4 border border-neutral-300 rounded-lg shadow-sm text-sm font-medium text-neutral-700 bg-white hover:bg-neutral-50 disabled:opacity-40 transition-colors"
                     >
                       <Download className="-ml-1 mr-2 h-4 w-4" /> Baixar card
                     </button>
@@ -683,18 +669,54 @@ Retorne um JSON com:
             )}
 
             {/* Visual Previews */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              <div className={generatedContent ? 'block' : 'hidden'}>
-                <h3 className="text-sm font-medium text-neutral-700 mb-2">Card tipográfico</h3>
-                <div className="border border-neutral-200 rounded-lg overflow-hidden bg-neutral-100 flex items-center justify-center p-4">
-                  <canvas ref={canvasRef} className="max-w-full h-auto shadow-md rounded" style={{ maxHeight: '400px', objectFit: 'contain' }} />
+            <div className={`grid gap-6 ${generatedContent && generatedImageUrl ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
+              {generatedContent && (
+                <div>
+                  <h3 className="text-sm font-medium text-neutral-700 mb-2">Card tipográfico</h3>
+
+                  {/* Template selector */}
+                  <div className="flex gap-2 mb-3" role="group" aria-label="Escolher template do card">
+                    {(['Gradiente', 'Dark', 'Clean'] as const).map((label, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setSelectedTemplate(i)}
+                        aria-pressed={selectedTemplate === i}
+                        className={`flex-1 h-8 rounded-lg border-2 transition-all text-xs font-medium ${
+                          selectedTemplate === i
+                            ? 'border-[#FF6B35] bg-[#FFF1EB] text-[#FF6B35]'
+                            : 'border-neutral-200 text-neutral-500 hover:border-neutral-300 bg-white'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Card preview */}
+                  <div
+                    ref={cardRef}
+                    className="border border-neutral-200 rounded-xl overflow-hidden bg-neutral-100"
+                  >
+                    <TypographicCard
+                      brand={brand}
+                      hook={generatedContent.hook}
+                      cta={generatedContent.cta}
+                      template={selectedTemplate}
+                      isVertical={format.includes('1080x1920')}
+                    />
+                  </div>
+
+                  <p className="mt-2 text-xs text-neutral-400 text-center">
+                    Clique com botão direito no card pra salvar a imagem
+                  </p>
                 </div>
-              </div>
+              )}
+
               {generatedImageUrl && (
                 <div>
                   <h3 className="text-sm font-medium text-neutral-700 mb-2">Imagem gerada</h3>
                   <div className="border border-neutral-200 rounded-lg overflow-hidden bg-neutral-100 flex items-center justify-center p-4">
-                    <img src={generatedImageUrl} alt="AI Generated" className="max-w-full h-auto shadow-md rounded" style={{ maxHeight: '400px', objectFit: 'contain' }} />
+                    <img src={generatedImageUrl} alt="Imagem gerada por IA" className="max-w-full h-auto shadow-md rounded" style={{ maxHeight: '400px', objectFit: 'contain' }} />
                   </div>
                 </div>
               )}
