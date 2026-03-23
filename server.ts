@@ -8,11 +8,26 @@ import axios from "axios";
 import { Vibrant } from "node-vibrant/node";
 import { createServer as createViteServer } from "vite";
 import path from "path";
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, Modality, Type } from "@google/genai";
+import {
+  IMAGEN_NEGATIVE_PROMPT,
+  appendPromptGuardrails,
+  buildAssetParts,
+  buildContentPrompt,
+  buildRegenerationPrompt,
+  normalizeProductType,
+  type AssetReference,
+  type ImageModelType,
+} from "./serverPrompting";
+import type { MarketerPreferences } from "./src/lib/marketerControls";
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "2mb" }));
+
+function toSafeJson(text?: string | null) {
+  return JSON.parse(text || "{}");
+}
 
 app.post("/api/scrape", async (req, res) => {
   try {
@@ -34,13 +49,15 @@ app.post("/api/scrape", async (req, res) => {
 
     const title = $("title").text() || "";
     const metaDescription = $('meta[name="description"]').attr("content") || "";
-    const ogDescription = $('meta[property="og:description"]').attr("content") || "";
+    const ogDescription =
+      $('meta[property="og:description"]').attr("content") || "";
 
     const h1 = $("h1")
       .map((_, el) => $(el).text().trim())
       .get()
       .filter(Boolean)
       .join(" | ");
+
     const h2 = $("h2")
       .map((_, el) => $(el).text().trim())
       .get()
@@ -58,33 +75,32 @@ app.post("/api/scrape", async (req, res) => {
     const images: string[] = [];
     $("img").each((_, el) => {
       const src = $(el).attr("src");
-      if (src) {
-        try {
-          const absoluteUrl = new URL(src, url).href;
-          images.push(absoluteUrl);
-        } catch (e) { }
+      if (!src) return;
+
+      try {
+        images.push(new URL(src, url).href);
+      } catch {
+        // Ignore invalid image URLs.
       }
     });
 
-    // Find a relevant image (logo or hero)
-    let targetImage =
+    const targetImage =
       images.find((img) => img.toLowerCase().includes("logo")) || images[0];
 
     let colors: string[] = [];
-    let primary_color = "#000000";
-    let secondary_color = "#ffffff";
+    let primaryColor = "#000000";
+    let secondaryColor = "#ffffff";
 
     if (targetImage) {
       try {
-        // Vibrant needs a buffer or a local file in Node, or an image URL if it supports it.
-        // Let's fetch the image as a buffer first
         const imageResponse = await axios.get(targetImage, {
           responseType: "arraybuffer",
           timeout: 5000,
         });
-        const buffer = Buffer.from(imageResponse.data, "binary");
 
-        const vibrant = new Vibrant(buffer);
+        const vibrant = new Vibrant(
+          Buffer.from(imageResponse.data, "binary"),
+        );
         const palette = await vibrant.getPalette();
 
         if (palette.Vibrant) colors.push(palette.Vibrant.hex);
@@ -93,11 +109,11 @@ app.post("/api/scrape", async (req, res) => {
         if (palette.LightVibrant) colors.push(palette.LightVibrant.hex);
         if (palette.DarkMuted) colors.push(palette.DarkMuted.hex);
 
-        primary_color = palette.Vibrant?.hex || primary_color;
-        secondary_color =
-          palette.Muted?.hex || palette.LightVibrant?.hex || secondary_color;
-      } catch (e) {
-        console.error("Error extracting colors", e);
+        primaryColor = palette.Vibrant?.hex || primaryColor;
+        secondaryColor =
+          palette.Muted?.hex || palette.LightVibrant?.hex || secondaryColor;
+      } catch (error) {
+        console.error("Error extracting colors", error);
       }
     }
 
@@ -105,11 +121,11 @@ app.post("/api/scrape", async (req, res) => {
       url,
       title,
       description: metaDescription || ogDescription,
-      headlines: `${h1} ${h2}`,
+      headlines: `${h1} ${h2}`.trim(),
       body_text: paragraphs,
       colors,
-      primary_color,
-      secondary_color,
+      primary_color: primaryColor,
+      secondary_color: secondaryColor,
       logo_url: targetImage,
     });
   } catch (error: any) {
@@ -121,33 +137,38 @@ app.post("/api/scrape", async (req, res) => {
 app.post("/api/analyze", async (req, res) => {
   try {
     const { scraped } = req.body;
-    if (!scraped) return res.status(400).json({ error: "scraped data required" });
+    if (!scraped) {
+      return res.status(400).json({ error: "scraped data required" });
+    }
 
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-    const prompt = `Analise esta marca com base nos dados extraídos do site:
-URL: ${scraped.url}
-Título: ${scraped.title}
-Descrição: ${scraped.description}
-Textos principais: ${scraped.body_text}
-Cores predominantes: ${scraped.colors?.join(', ')}
+    const prompt = `Analyze this brand based on extracted website data and return valid JSON only.
 
-Retorne um JSON com:
-- brand_name: nome da marca
-- product_type: 'Sistema' | 'ecommerce' | 'food' | 'service' | 'other'
-- tone: 'formal' | 'casual' | 'bold' | 'friendly'
-- target_audience: descrição em 1 frase
-- value_proposition: proposta de valor principal em 1 frase
-- key_pain: principal dor que o produto resolve
-- language: 'pt-BR' | 'en' | 'es' (escolher preferencialmente pt-BR se o site for brasileiro)
-- emoji_style: 'minimal' | 'moderate' | 'heavy'
+Website data:
+- URL: ${scraped.url}
+- Title: ${scraped.title}
+- Description: ${scraped.description}
+- Headlines: ${scraped.headlines}
+- Body text: ${scraped.body_text}
+- Colors: ${scraped.colors?.join(", ")}
 
-IMPORTANTE: Toda a análise deve ser feita em Português Brasileiro (pt-BR) com um tom amigável e informal.`;
+Return:
+- brand_name
+- product_type: use only one of [saas, ecommerce, food, service, other]
+- tone: use only one of [formal, casual, bold, friendly]
+- target_audience: 1 sentence in pt-BR
+- value_proposition: 1 sentence in pt-BR
+- key_pain: 1 sentence in pt-BR
+- language: use only one of [pt-BR, en, es]
+- emoji_style: use only one of [minimal, moderate, heavy]
+
+Prefer pt-BR whenever the site appears to be Brazilian.`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.1-pro-preview',
+      model: "gemini-3.1-pro-preview",
       contents: prompt,
       config: {
-        responseMimeType: 'application/json',
+        responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
           properties: {
@@ -158,157 +179,140 @@ IMPORTANTE: Toda a análise deve ser feita em Português Brasileiro (pt-BR) com 
             value_proposition: { type: Type.STRING },
             key_pain: { type: Type.STRING },
             language: { type: Type.STRING },
-            emoji_style: { type: Type.STRING }
+            emoji_style: { type: Type.STRING },
           },
-          required: ['brand_name', 'product_type', 'tone', 'target_audience', 'value_proposition', 'key_pain', 'language', 'emoji_style']
-        }
-      }
+          required: [
+            "brand_name",
+            "product_type",
+            "tone",
+            "target_audience",
+            "value_proposition",
+            "key_pain",
+            "language",
+            "emoji_style",
+          ],
+        },
+      },
     });
 
-    const analysis = JSON.parse(response.text || '{}');
+    const analysis = toSafeJson(response.text);
+    analysis.product_type = normalizeProductType(analysis.product_type);
     res.json(analysis);
   } catch (error: any) {
-    console.error("DEBUG: Analyze API Error!", JSON.stringify(error, null, 2));
-    res.status(500).json({ error: error.message || "A IA travou na análise. Tenta de novo? 🔄" });
+    console.error("Analyze API Error!", JSON.stringify(error, null, 2));
+    res.status(500).json({
+      error: error.message || "A IA travou na analise. Tenta de novo?",
+    });
   }
 });
 
 app.post("/api/generate", async (req, res) => {
   try {
-    const { brand, postType, postVisualHint, format, imageStyle, includeText, imageStyleDescription, regenerateField, currentContent } = req.body;
-    if (!brand) return res.status(400).json({ error: "brand required" });
+    const {
+      brand,
+      postType,
+      postVisualHint,
+      format,
+      imageStyle,
+      includeText,
+      regenerateField,
+      currentContent,
+      selectedAssets = [],
+      imageModelType = "imagen",
+      marketerPreferences,
+    } = req.body as {
+      brand: any;
+      postType: string;
+      postVisualHint?: string;
+      format: string;
+      imageStyle: string;
+      includeText: boolean;
+      regenerateField?: string;
+      currentContent?: Record<string, string>;
+      selectedAssets?: AssetReference[];
+      imageModelType?: ImageModelType;
+      marketerPreferences?: Partial<MarketerPreferences> | null;
+    };
 
-    // Partial regeneration — only regenerate one specific field
+    if (!brand) {
+      return res.status(400).json({ error: "brand required" });
+    }
+
+    const safeAssets = Array.isArray(selectedAssets)
+      ? selectedAssets.filter((asset) => asset?.url)
+      : [];
+
+    const brandWithNormalizedType = {
+      ...brand,
+      product_type: normalizeProductType(brand.product_type),
+    };
+
+    const assetParts = safeAssets.length
+      ? await buildAssetParts(safeAssets, 3)
+      : [];
+
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+
     if (regenerateField && currentContent) {
-      const fieldLabel: Record<string, string> = {
-        hook: `hook (título impactante, max 10 palavras, em ${brand.language || 'pt-BR'})`,
-        caption: `caption (legenda completa em ${brand.language || 'pt-BR'}, max 300 chars, com quebras de linha naturais)`,
-        cta: `cta (chamada para ação, 1 linha curta, em ${brand.language || 'pt-BR'})`,
-        hashtags: `hashtags (15 hashtags relevantes como string, ex: "#tag1 #tag2")`,
-        image_prompt: `image_prompt (prompt DETALHADO em inglês para geração de imagem, sem códigos hexadecimais, mínimo 3 frases)`,
-      };
-      const regenPrompt = `Você é um especialista em marketing de conteúdo brasileiro, focado no Instagram. Use gírias naturais como "bora", "arrasou", "eita".
+      const regenPrompt = buildRegenerationPrompt({
+        field: regenerateField,
+        brand: brandWithNormalizedType,
+        postType,
+        format,
+        imageStyle,
+        includeText,
+        imageModelType,
+        selectedAssets: safeAssets,
+        currentContent,
+        marketerPreferences,
+      });
 
-Contexto do post existente:
-- Hook: "${currentContent.hook}"
-- Legenda: "${currentContent.caption}"
-- CTA: "${currentContent.cta}"
-
-Brand kit:
-- Nome: ${brand.name}
-- Tom de voz: ${brand.tone}
-- Público-alvo: ${brand.target_audience}
-- Idioma: ${brand.language}
-- Tipo de post: ${postType}
-
-Gere APENAS um novo ${fieldLabel[regenerateField] || regenerateField} diferente e mais criativo.
-Retorne JSON com SOMENTE a chave "${regenerateField}".`;
-
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
       const regenResponse = await ai.models.generateContent({
-        model: 'gemini-3.1-pro-preview',
-        contents: regenPrompt,
+        model: "gemini-3.1-pro-preview",
+        contents: assetParts.length ? [regenPrompt, ...assetParts] : regenPrompt,
         config: {
-          responseMimeType: 'application/json',
+          responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
             properties: { [regenerateField]: { type: Type.STRING } },
-            required: [regenerateField]
-          }
-        }
+            required: [regenerateField],
+          },
+        },
       });
-      const regenResult = JSON.parse(regenResponse.text || '{}');
+
+      const regenResult = toSafeJson(regenResponse.text);
+
+      if (regenResult.image_prompt) {
+        regenResult.image_prompt = appendPromptGuardrails({
+          prompt: regenResult.image_prompt,
+          hook: currentContent.hook || "",
+          includeText,
+          language: brandWithNormalizedType.language || "pt-BR",
+          imageModelType,
+          hasAssets: safeAssets.length > 0,
+        });
+      }
+
       return res.json({ ...currentContent, ...regenResult });
     }
 
-    const assetContext = req.body.assetCount > 0
-      ? `\n\nA marca possui ${req.body.assetCount} foto(s) de produto/referência disponíveis.`
-      : '';
+    const prompt = buildContentPrompt({
+      brand: brandWithNormalizedType,
+      postType,
+      postVisualHint,
+      format,
+      imageStyle,
+      includeText,
+      imageModelType,
+      selectedAssets: safeAssets,
+      marketerPreferences,
+    });
 
-    const keywordsContext = brand.keywords?.length > 0
-      ? `\nPalavras-chave da marca: ${brand.keywords.join(', ')}`
-      : '';
-
-    const hexToColorName = (hex: string): string => {
-      const cleanHex = hex.replace('#', '');
-      const r = parseInt(cleanHex.substring(0, 2), 16);
-      const g = parseInt(cleanHex.substring(2, 4), 16);
-      const b = parseInt(cleanHex.substring(4, 6), 16);
-      const max = Math.max(r, g, b);
-      const min = Math.min(r, g, b);
-      const lightness = (max + min) / 2 / 255;
-      if (max - min < 30) {
-        if (lightness > 0.85) return 'white';
-        if (lightness > 0.6) return 'light gray';
-        if (lightness > 0.4) return 'gray';
-        return 'near black';
-      }
-      let hue = 0;
-      const d = max - min;
-      if (max === r) hue = ((g - b) / d + (g < b ? 6 : 0)) * 60;
-      else if (max === g) hue = ((b - r) / d + 2) * 60;
-      else hue = ((r - g) / d + 4) * 60;
-      const saturation = d / 255;
-      let colorName = hue < 15 || hue >= 345 ? 'red' : hue < 45 ? 'orange' : hue < 70 ? 'yellow' : hue < 160 ? 'green' : hue < 200 ? 'teal' : hue < 260 ? 'blue' : hue < 290 ? 'purple' : 'pink';
-      let prefix = lightness < 0.25 ? 'very dark ' : lightness < 0.4 ? 'dark ' : lightness > 0.85 ? 'very light ' : lightness > 0.75 ? 'light ' : '';
-      if (saturation < 0.3) prefix += 'muted ';
-      else if (saturation > 0.7) prefix += 'vivid ';
-      return prefix + colorName;
-    };
-
-    const prompt = `Com base no brand kit abaixo, gere o conteúdo para um post de Instagram.
-
-Brand kit:
-- Nome: ${brand.name}
-- Tipo: ${brand.product_type}
-- Tom de voz: ${brand.tone}
-- Público-alvo: ${brand.target_audience}
-- Proposta de valor: ${brand.value_proposition}
-- Dor principal: ${brand.key_pain}
-- Descrição: ${brand.description || ''}
-- Cores: primária ${brand.primary_color}, secundária ${brand.secondary_color}
-- Idioma: ${brand.language}
-- Estilo de emoji: ${brand.emoji_style}${keywordsContext}${assetContext}
-
-Tipo de post: ${postType}
-Formato: ${format}
-Estilo da Imagem: ${imageStyle}
-
-Retorne um JSON com:
-- hook: título/primeira linha impactante (max 10 palavras)
-- caption: legenda completa em ${brand.language || 'pt-BR'} com quebras de linha naturais (max 300 chars)
-- cta: chamada para ação final (1 linha)
-- hashtags: lista de 15 hashtags relevantes como string (ex: "#tag1 #tag2")
-- image_prompt: prompt DETALHADO em inglês para geração de imagem. IMPORTANTE — o prompt de imagem deve seguir TODAS estas regras:
-
-  1. ESTILO VISUAL OBRIGATÓRIO: ${imageStyleDescription}
-
-  2. COMPOSIÇÃO: A imagem gerada É o próprio post final — ela deve preencher o frame completo sem nenhuma borda, moldura, sombra externa ou background adicional ao redor. NÃO gere um mockup de post, NÃO coloque a imagem dentro de um quadrado com fundo extra, NÃO simule como um post apareceria numa tela. A imagem deve ter elementos visuais de alta qualidade: fotografia profissional, gradientes, formas, luz. Proibido: flat design, vetores simples, clipart, ícones cartoon.
-
-  3. CONTEXTO VISUAL DO POST: ${postVisualHint ? postVisualHint : `This is a ${postType} post — adapt the visual composition to match this content type.`}
-
-  4. FOTOGRAFIA: Se relevante ao produto (${brand.product_type}), inclua elementos fotográficos realistas — produto com iluminação profissional, mockups, ou cenas lifestyle.
-
-  5. CORES DA MARCA: Use as cores "${hexToColorName(brand.primary_color)}" (primária) e "${hexToColorName(brand.secondary_color)}" (secundária) como cores dominantes. NUNCA inclua códigos hexadecimais no prompt.
-
-  6. TIPOGRAFIA: ${includeText ? `Inclua texto tipográfico bold e moderno no design em ${brand.language || 'pt-BR'} — um título/headline curto e impactante. Use fontes sans-serif modernas.` : 'NÃO inclua NENHUM texto na imagem.'}
-
-  7. ELEMENTOS DE DESIGN: Adicione elementos decorativos sutis. NÃO use clipart ou ícones cartoon.
-
-  8. FORMATO: ${format}. A imagem deve ser otimizada para este formato exato.
-
-  9. O prompt deve ser específico, detalhado (mínimo 3 frases), e em inglês.
-
-  10. PROIBIDO: NUNCA inclua códigos hexadecimais de cores no prompt.
-
-IMPORTANTE: O hook, caption e cta DEVEM estar em Português Brasileiro (pt-BR) com tom informal e gírias, a menos que o idioma da marca seja explicitamente outro.`;
-
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
     const response = await ai.models.generateContent({
-      model: 'gemini-3.1-pro-preview',
-      contents: prompt,
+      model: "gemini-3.1-pro-preview",
+      contents: assetParts.length ? [prompt, ...assetParts] : prompt,
       config: {
-        responseMimeType: 'application/json',
+        responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
           properties: {
@@ -316,55 +320,117 @@ IMPORTANTE: O hook, caption e cta DEVEM estar em Português Brasileiro (pt-BR) c
             caption: { type: Type.STRING },
             cta: { type: Type.STRING },
             hashtags: { type: Type.STRING },
-            image_prompt: { type: Type.STRING }
+            image_prompt: { type: Type.STRING },
           },
-          required: ['hook', 'caption', 'cta', 'hashtags', 'image_prompt']
-        }
-      }
+          required: ["hook", "caption", "cta", "hashtags", "image_prompt"],
+        },
+      },
     });
 
-    const content = JSON.parse(response.text || '{}');
+    const content = toSafeJson(response.text);
+    content.hook = (content.hook || "").trim();
+    content.caption = (content.caption || "").trim();
+    content.cta = (content.cta || "").trim();
+    content.hashtags = (content.hashtags || "").trim();
+    content.image_prompt = appendPromptGuardrails({
+      prompt: content.image_prompt || "",
+      hook: content.hook || "",
+      includeText,
+      language: brandWithNormalizedType.language || "pt-BR",
+      imageModelType,
+      hasAssets: safeAssets.length > 0,
+    });
+
     res.json(content);
   } catch (error: any) {
-    console.error("Generate error:", error.message);
-    res.status(500).json({ error: error.message });
+    console.error("Generate error:", error);
+    res.status(500).json({ error: error.message || "Erro ao gerar conteudo" });
   }
 });
 
 app.post("/api/image", async (req, res) => {
   try {
-    const { prompt, imageModel, aspectRatio, imageSize, modelType } = req.body;
-    if (!prompt || !imageModel) return res.status(400).json({ error: "prompt and imageModel required" });
+    const {
+      prompt,
+      imageModel,
+      aspectRatio,
+      imageSize,
+      modelType,
+      referenceImages = [],
+    } = req.body as {
+      prompt: string;
+      imageModel: string;
+      aspectRatio: string;
+      imageSize: string;
+      modelType: ImageModelType;
+      referenceImages?: AssetReference[];
+    };
+
+    if (!prompt || !imageModel) {
+      return res
+        .status(400)
+        .json({ error: "prompt and imageModel required" });
+    }
+
+    const safeReferences = Array.isArray(referenceImages)
+      ? referenceImages.filter((asset) => asset?.url).slice(0, 3)
+      : [];
+
+    if (modelType === "imagen" && safeReferences.length > 0) {
+      return res.status(400).json({
+        error:
+          "Pra editar usando assets reais, escolhe um modelo Nano Banana.",
+      });
+    }
 
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
-    if (modelType === 'imagen') {
+    if (modelType === "imagen") {
+      const imagenPrompt = `${prompt.trim()} Avoid: ${IMAGEN_NEGATIVE_PROMPT}.`;
+
       const response = await ai.models.generateImages({
         model: imageModel,
-        prompt,
+        prompt: imagenPrompt,
         config: {
           numberOfImages: 1,
           aspectRatio,
+          outputMimeType: "image/png",
         },
       });
+
       const imgBytes = response.generatedImages?.[0]?.image?.imageBytes;
-      if (!imgBytes) throw new Error('Nenhuma imagem gerada');
-      res.json({ imageBase64: imgBytes });
-    } else {
-      const response = await ai.models.generateContent({
-        model: imageModel,
-        contents: { parts: [{ text: prompt }] },
-        config: {
-          imageConfig: { aspectRatio, imageSize }
-        }
-      });
-      const part = response.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData);
-      if (!part?.inlineData?.data) throw new Error('Nenhuma imagem gerada');
-      res.json({ imageBase64: part.inlineData.data });
+      if (!imgBytes) {
+        throw new Error("Nenhuma imagem gerada");
+      }
+
+      return res.json({ imageBase64: imgBytes });
     }
+
+    const referenceParts = safeReferences.length
+      ? await buildAssetParts(safeReferences, 3)
+      : [];
+
+    const response = await ai.models.generateContent({
+      model: imageModel,
+      contents: referenceParts.length ? [prompt, ...referenceParts] : prompt,
+      config: {
+        responseModalities: [Modality.IMAGE],
+        imageConfig: { aspectRatio, imageSize },
+      },
+    });
+
+    const imagePart = response.candidates?.[0]?.content?.parts?.find(
+      (part: any) => part.inlineData?.data,
+    );
+
+    if (!imagePart?.inlineData?.data) {
+      throw new Error("Nenhuma imagem gerada");
+    }
+
+    res.json({ imageBase64: imagePart.inlineData.data });
   } catch (error: any) {
-    console.error("Image error:", error.message);
-    res.status(500).json({ error: error.message });
+    console.error("Image error:", error);
+    res.status(500).json({ error: error.message || "Erro ao gerar imagem" });
   }
 });
 
@@ -378,7 +444,7 @@ async function startServer() {
   } else {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
-    app.get("*", (req, res) => {
+    app.get("*", (_req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
