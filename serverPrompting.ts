@@ -590,7 +590,7 @@ function getImageStylePlaybook(imageStyle: string) {
   const key = normalizeKey(imageStyle);
 
   if (key.includes("canva")) {
-    return "Finished social artwork with layered composition, text hierarchy, badges or shapes when relevant, and the product integrated directly into the layout.";
+    return "Clean, modern commercial aesthetic. Focus on beautiful, realistic product photography with vibrant brand colors. Create natural negative space for typography. The product must look real, high-quality, and appetizing. DO NOT overcomplicate the composition with random graphic shapes or complex banners.";
   }
   if (key.includes("fotografico") || key.includes("realista")) {
     return "Photorealistic materials, believable depth, professional lighting, and natural detail.";
@@ -667,7 +667,7 @@ function getStyleSafetyRules({
 
   if (styleKey.includes("canva")) {
     rules.push(
-      "Treat the output as finished social artwork, not as a photo with a text box pasted over it.",
+      "Generate a high-quality product photo with clean negative space for text overlays, rather than cluttered graphic design templates.",
     );
     rules.push(
       "Never use phones, tablets, browser windows, wall posters, or social app screenshots as the main framing device.",
@@ -867,10 +867,21 @@ ${buildBrandContextBlock(brand)}
 <asset_context>
 ${assetContext.text}
 </asset_context>
-${fewShotBlock}
+${preferences.campaignBrief ? `
+<campaign_brief priority="high">
+  The user described exactly what they want to post (in their own words):
+  "${preferences.campaignBrief}"
+
+  IMPORTANT: Parse this brief carefully. Extract:
+  - The specific product(s), price(s), dates, promotions, or bundles mentioned
+  - The implied post type (e.g., "promoção/oferta" → Oferta relâmpago or CTA direta)
+  - Use these specifics as ground truth for copy — do NOT invent prices or details not mentioned
+  - The post type selected in the UI (${postType}) is a soft suggestion; override it if the brief clearly implies a different type
+</campaign_brief>
+` : ""}${fewShotBlock}
 <rules>
 - Think like a strategist, not a copy generator.
-${preferences.angleOverride ? `- IMPORTANT: The marketer has manually specified an angle. Use it as the angle for this post exactly as written: "${preferences.angleOverride}"` : "- The angle must feel like something a good Brazilian marketer would intentionally choose."}
+${preferences.campaignBrief ? `- IMPORTANT: A campaign brief was provided. Use the exact products, prices, dates, and bundles mentioned in it as the foundation for the strategy.\n` : ""}${preferences.angleOverride ? `- IMPORTANT: The marketer has manually specified an angle. Use it as the angle for this post exactly as written: "${preferences.angleOverride}"` : "- The angle must feel like something a good Brazilian marketer would intentionally choose."}
 - Avoid generic AI logic, fake urgency, fake proof, and placeholder thinking.
 - If assets are attached, let them affect the strategy instead of ignoring them.
 - If the product type is food, avoid turning the concept into a sad portrait by default.
@@ -949,11 +960,13 @@ ${buildBrandContextBlock(brand)}
     resolveCtaIntensity(preferences.ctaIntensity, strategyObjective),
   )}
 - Extra notes from marketer: ${preferences.creativeNotes || "None"}
+${preferences.campaignBrief ? `- Campaign brief (user's own words): "${preferences.campaignBrief}"` : ""}
 </post_context>
 
 <rules>
 - Write in natural PT-BR unless the brand language clearly says otherwise.
 - Do not invent prices, discounts, numbers, claims, awards, deadlines, testimonials, or guarantees.
+${preferences.campaignBrief ? `- IMPORTANT: A campaign brief was provided. Use the exact prices, products, dates, and bundles from it — do NOT paraphrase or generalize these specifics.` : ""}
 - Do not default to emojis or storytelling unless the strategy supports it.
 - Avoid generic AI phrases, hollow inspiration, and translated-English marketing tone.
 - Hook: ${hookLimit}.
@@ -1049,10 +1062,11 @@ ${assetContext.text}
 </asset_context>
 
 <rules>
-- Think in finished social artwork, not in mockups or screenshots.
-- The piece should feel intentionally designed for a real brand, not like AI stock.
-- If assets are attached, preserve the real product identity and let the product stay recognizable.
-- If image text exists, the textTreatment must support exactly that text and keep it short and legible.
+- Keep all fields short, maximum 1-2 sentences. Image generation models need concise, visual prompts, not complex design instructions.
+- Prioritize stunning, photorealistic product visibility over layered graphic design layouts.
+- Do NOT describe complex graphic templates (like split screens, multiple badges, or UI). Image models fail at graphic design. Keep the composition simple: great product, great lighting, and natural blank space for text.
+- If assets are attached, preserve the real product identity and let the product stay recognizable as the absolute hero without being distorted by heavy graphic overlays.
+- If image text exists, the textTreatment must support exactly that text but keep it clean and integrated seamlessly without asking for complex banners.
 - Never propose placeholder branding, fake website chrome, or random UI filler.
 - Avoid generic sad portraits for pain-point posts unless the marketer explicitly asked for that route.
 - Follow these safety rules:
@@ -1116,29 +1130,28 @@ export function buildImagePromptFromBrief({
 
   const intro =
     selectedAssets.length > 0 && imageModelType === "nanoBanana"
-      ? "Use the attached reference images as the source of truth for the real product. Preserve recognizable shape, materials, texture, and product identity while turning them into a finished social media artwork."
-      : "Create a finished social media artwork for Instagram, not a mockup, browser view, or photo of a screen.";
+      ? "Use the attached reference images as the absolute source of truth for the real product. Preserve recognizable shape, materials, and product identity."
+      : "Create a high-quality product photo or backdrop ready for social media overlays.";
 
   const textRule = includeText
-    ? `Render exactly this PT-BR text in the artwork: "${exactText}". Keep it bold, short, fully legible, and integrated into the design hierarchy.`
-    : "Do not render any text, letters, captions, or typography in the image.";
+    ? `Render exactly this PT-BR text in the artwork: "${exactText}". Keep it very simple, bold, and fully legible without cluttering the image with UI badges.`
+    : "Do not render any text, letters, captions, or typography in the image. Keep it purely visual.";
 
   const prompt = `${intro}
 Layout: ${layout}.
-Visual goal: ${visualBrief.visualGoal}.
-Composition: ${visualBrief.composition}.
-Layout direction: ${visualBrief.layout}.
-Background treatment: ${visualBrief.background}.
-Product role: ${visualBrief.productRole}.
-Text treatment: ${visualBrief.textTreatment}.
-Style direction: ${getImageStylePlaybook(imageStyle)}.
-Product guidance: ${getProductVisualGuidance(productType)}.
-Brand mood: ${hexToColorName(brand.primary_color || "#000000")} and ${hexToColorName(brand.secondary_color || "#ffffff")}.
-Creative angle: ${strategy.angle}.
-Emotional vector: ${strategy.emotionalVector}.
+Visual goal: ${visualBrief.visualGoal}
+Composition: ${visualBrief.composition}
+Background: ${visualBrief.background}
+Product role: ${visualBrief.productRole}
+${includeText ? `Text treatment: ${visualBrief.textTreatment}` : ""}
+Style guidance: ${getImageStylePlaybook(imageStyle)}
+Product guidance: ${getProductVisualGuidance(productType)}
+Brand color mood: ${hexToColorName(brand.primary_color || "#000000")} and ${hexToColorName(brand.secondary_color || "#ffffff")}
+Creative angle: ${strategy.angle}
+Emotional vector: ${strategy.emotionalVector}
 ${textRule}
-Result must look like a real branded campaign piece ready to post.
-Avoid: ${avoidList.join(", ")}.`;
+Final note: Result must look like an ultra-premium photograph or render, not a cheap AI collage.
+Avoid: ${avoidList.join(", ")}, cluttered layouts, unnecessary UI elements.`;
 
   return prompt.replace(/\s+/g, " ").trim();
 }
