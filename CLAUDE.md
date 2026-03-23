@@ -18,118 +18,134 @@ There are no tests configured in this project.
 Create a `.env` file at the root with:
 
 ```
-GEMINI_API_KEY=...          # Google Gemini API key — server-side only (Express), NOT client-side
+GEMINI_API_KEY=...          # Google Gemini API key — server-side only (Express)
 VITE_SUPABASE_URL=...       # Supabase project URL
 VITE_SUPABASE_ANON_KEY=...  # Supabase anon/public key
 ```
 
-> ⚠️ `GEMINI_API_KEY` must NOT be exposed to the client. All Gemini calls go through Express routes. Do not add it back to `vite.config.ts` `define`.
+> ⚠️ `GEMINI_API_KEY` is consumed only by `server.ts` via `process.env`. It must NEVER appear in `vite.config.ts` `define` or anywhere in the client bundle.
 
 ## Brand Identity
 
 **Name:** Criaê
 **Tagline:** O seu marketeiro pessoal.
-**Positioning:** A ferramenta de geração de conteúdo de marca para empreendedores brasileiros. Simples, rápida, com a vibe certa.
+**Positioning:** Ferramenta de geração de conteúdo de marca para empreendedores brasileiros. Simples, rápida, com a vibe certa.
 
 ### Tone of Voice
-- Informal, direto, sem frescura — tuteia o usuário sempre
-- Levemente bem-humorado, como um amigo que sabe de marketing
-- Nunca corporativo, nunca "o senhor"
-- Usa gíria com moderação — não exagera, não fica forçado
-- Frases curtas. Verbos no imperativo para CTAs.
+- Super casual, como um amigo que sabe de marketing. Tuteia sempre.
+- Gírias naturais: "bora", "manda ver", "eita", "opa", "ih", "cê", "tá on", "arrasou"
+- Emojis com personalidade, sem exagero
+- Frases curtas. CTAs no imperativo.
+- NUNCA corporativo, NUNCA "o senhor/a senhora"
 
 ### Color Palette
 ```
-Primary (orange):    #FF6B35   → replace all indigo-600 / indigo-700
-Primary light:       #FF8C5A   → replace indigo-500
-Primary bg:          #FFF1EB   → replace indigo-50 / indigo-100
-Secondary (navy):    #1A1A2E   → dark backgrounds, contrast text
-Accent (yellow):     #FFD166   → highlights, badges, accents
-Success (green):     #06D6A0   → replace emerald-*
-Surface (warm):      #FFF8F0   → replace neutral-50 body background
-Error:               #EF476F   → replace red-*
+Primary (orange):    #FF6B35   — buttons, links, focus rings
+Primary hover:       #E55A28   — hover state for primary
+Primary light:       #FF8C5A   — icons, secondary accents
+Primary bg:          #FFF1EB   — hover backgrounds, badges
+Secondary (navy):    #1A1A2E   — dark text, dark backgrounds
+Accent (yellow):     #FFD166   — highlights
+Success (green):     #06D6A0   — success toasts, positive states
+Surface (warm):      #FFF8F0   — page background (replaces neutral-50)
+Error:               #EF476F   — error toasts
 ```
 
-All Tailwind classes using `indigo-*` across components should be replaced with the custom palette above. Use inline `style` or extend Tailwind theme for custom values when needed.
+All new `indigo-*` Tailwind classes should be replaced with arbitrary values from the palette above (e.g. `bg-[#FF6B35]`). Focus rings: `focus:ring-[#FF6B35] focus:border-[#FF6B35]`.
 
 ### Typography
-- **Display font:** Plus Jakarta Sans (600, 700, 800) — headings, logo wordmark, hero text
-- **Body font:** Inter (400, 500, 600, 700) — all body copy
-- Both loaded from Google Fonts in `src/index.css`
-- Apply `font-display` class (mapped to Plus Jakarta Sans) to all `h1`, `h2`, `h3` and the brand logo
+- **Display font:** Plus Jakarta Sans (600, 700, 800) — headings, logo wordmark, hero text. Use `font-display` class.
+- **Body font:** Inter (400, 500, 600, 700) — all body copy. Default `font-sans`.
+- Both loaded from Google Fonts in `src/index.css`.
 
 ## Architecture
 
-**Dual-process design:** `server.ts` is an Express server that:
-1. Serves backend API endpoints (scraping, Gemini AI calls)
-2. In dev mode, mounts Vite as middleware (HMR + SPA). In production, serves the built `dist/` statically.
+**Dual-process design:** `server.ts` is an Express + TypeScript server that:
+1. Exposes all backend API routes (scraping, Gemini AI)
+2. In dev mode, mounts Vite as middleware (SPA + HMR). In production, serves `dist/` statically.
 
-**Express API routes:**
-- `POST /api/scrape` — web scraping + color extraction via `node-vibrant` + `cheerio`
-- `POST /api/analyze` — Gemini brand analysis (receives scraped data, returns `GeminiAnalysis`) *(planned)*
-- `POST /api/generate` — Gemini copy generation (receives brand kit + options, returns `GeneratedContent`) *(planned)*
-- `POST /api/image` — Gemini image generation (returns base64) *(planned)*
+### Express API Routes (`server.ts`)
 
-**Frontend (React + Tailwind v4 + TypeScript):**
-- State lives entirely in `App.tsx` — simple view-router using `AppView` string union (`'list' | 'create' | 'edit' | 'detail'`) and `selectedBrand` state. No router library.
-- All Supabase calls are made directly inside components (no service layer). Client exported from `src/lib/supabase.ts`.
-- Gemini calls must go through Express — do NOT instantiate `GoogleGenAI` in the browser.
-- Framer Motion (`motion` package) is installed — use it for page transitions, list animations, and micro-interactions.
+| Route | Purpose |
+|---|---|
+| `POST /api/scrape` | Fetches URL, extracts title/description/colors/logo via `cheerio` + `node-vibrant` |
+| `POST /api/analyze` | Receives `{ scraped }`, calls Gemini `gemini-3.1-pro-preview`, returns `GeminiAnalysis` |
+| `POST /api/generate` | Receives brand kit + post config, calls Gemini, returns `GeneratedContent`. Supports partial regeneration via `regenerateField` + `currentContent` body params. |
+| `POST /api/image` | Receives `{ prompt, imageModel, aspectRatio, imageSize, modelType }`, calls Imagen or Gemini image model, returns `{ imageBase64 }` |
 
-**Supabase tables:**
-- `brands` — core brand kit records (schema matches `Brand` type in `src/types.ts`)
-- `brand_assets` — uploaded images, stored in the `brand-assets` Storage bucket
-- `generated_posts` — history of AI-generated post content per brand
+**Partial regeneration in `/api/generate`:** If `regenerateField` and `currentContent` are in the request body, the route runs a focused prompt to regenerate only that field and returns early with `{ ...currentContent, [field]: newValue }`.
 
-**Content generation flow (`BrandDetail.tsx`):**
-1. User configures post options → "Criar conteúdo"
-2. Fetches brand assets from Supabase for context
-3. Calls `POST /api/generate` (Express → Gemini) → gets `hook`, `caption`, `cta`, `hashtags`, `image_prompt`
-4. Saves result to `generated_posts` table
-5. Renders typographic card preview (DOM/CSS-based, not canvas)
-6. Optionally calls `POST /api/image` (Express → Gemini image model) to generate AI image
+### Frontend (`src/`)
 
-**Brand registration flow (`BrandForm.tsx`):**
-1. User enters URL → hits `POST /api/scrape` → gets title, description, colors, logo
-2. Scrape result sent to `POST /api/analyze` → Gemini returns tone, audience, value prop, etc.
-3. Form auto-fills; user adjusts and saves to Supabase `brands` table
+- **State / routing:** `App.tsx` owns all global state — `AppView` string union (`'list' | 'create' | 'edit' | 'detail'`), `selectedBrand`, `onboardingUrl`. No router library.
+- **Animations:** Framer Motion (`motion/react`) — page transitions via `AnimatePresence` in `App.tsx`, staggered card grid in `BrandList.tsx`, sequential content reveal in `BrandDetail.tsx`.
+- **Toasts:** `src/components/Toast.tsx` + `src/hooks/useToast.ts`. `addToast(msg, type)` called from `App.tsx` which passes `onError` / `onSuccess` props down to child views.
+- **Supabase:** All DB/Storage calls happen directly in components. Client singleton at `src/lib/supabase.ts`.
+- **Gemini:** NEVER instantiate `GoogleGenAI` in the browser. All AI calls go through the Express routes above.
 
-## Improvement Roadmap
+### Key Components
 
-### Phase 1 — Nova cara ✅ (in progress)
-- [x] Rename app: BrandGen → Criaê (index.html, App.tsx, package.json, canvas watermark)
-- [x] Color palette: replace all `indigo-*` with custom warm BR palette
-- [x] Copy rewrite: all PT-BR strings with "marketeiro pessoal" tone
-- [x] Typography: add Plus Jakarta Sans display font
-- [x] Fix `lang="pt-BR"` in index.html
-- [x] Warm surface: body background `#FFF8F0`
+| Component | Responsibility |
+|---|---|
+| `App.tsx` | View router, global state, toast integration, onboarding URL handoff |
+| `Onboarding.tsx` | Full-screen welcome shown when no brands exist. Accepts URL → passes to `BrandForm` via `onboardingUrl` state |
+| `BrandList.tsx` | Brand card grid. Renders `<Onboarding>` when brands array is empty |
+| `BrandForm.tsx` | Brand create/edit. Accepts `initialUrl` prop — auto-triggers scan on mount if provided |
+| `BrandDetail.tsx` | Post generator, brand kit summary, 3 tabs (Criar post / Assets / Histórico) |
+| `TypographicCard.tsx` | DOM/CSS card renderer with 3 templates (Gradiente, Dark, Clean). Uses brand colors via inline styles |
+| `AssetUploader.tsx` | Supabase Storage upload/delete for brand photos |
+| `PostHistory.tsx` | Collapsible list of past generated posts |
+| `Toast.tsx` | Animated toast notifications (error `#EF476F`, success `#06D6A0`) |
 
-### Phase 2 — Se sente vivo
-- [ ] Activate Framer Motion: page transitions with `AnimatePresence` in `App.tsx`
-- [ ] Staggered brand card animations in `BrandList.tsx`
-- [ ] Multi-step loading messages: "Acessando o site..." → "Lendo as cores..." → "A IA tá analisando..." → "Quase lá..."
-- [ ] Generated content sections animate in sequentially (hook → caption → CTA → hashtags)
-- [ ] DOM/CSS typographic card renderer (replace canvas — enables real fonts, templates, glassmorphism)
-- [ ] Toast notification system (replace inline error divs)
+### `BrandDetail.tsx` — Generated Content Flow
 
-### Phase 3 — Seguro pra lançar
-- [ ] Move ALL Gemini calls to Express routes (`/api/analyze`, `/api/generate`, `/api/image`)
-- [ ] Remove `GEMINI_API_KEY` from `vite.config.ts` `define` — server-side only
-- [ ] Inline post editing (hook, caption, CTA, hashtags editable after generation)
-- [ ] Partial regeneration ("só o hook", "só as hashtags")
-- [ ] Guided onboarding flow for first-time users
+1. `handleGenerateContent` → `POST /api/generate` → sets both `generatedContent` and `editedContent`
+2. User can **edit any field inline** (`EditableField` component — click to edit, blur/Enter to save)
+3. User can **regenerate one field** ("refazer" button per field → `handleRegenerateField` → `POST /api/generate` with `regenerateField`)
+4. "Copiar tudo" and `TypographicCard` both read from `editedContent` (not `generatedContent`)
+5. `handleGenerateImage` → `POST /api/image` → stores base64 image, uploads to Supabase Storage, updates `generated_posts.image_url`
 
-### Phase 4 — Produto de verdade
+### Supabase Schema
+
+| Table | Notes |
+|---|---|
+| `brands` | Core brand kit. Schema mirrors `Brand` type in `src/types.ts` |
+| `brand_assets` | Uploaded images. Storage bucket: `brand-assets` |
+| `generated_posts` | History of AI-generated posts per brand. `image_url` populated after image generation |
+
+## Roadmap
+
+### ✅ Phase 1 — Nova cara
+- Rename BrandGen → Criaê everywhere
+- Warm BR color palette (orange `#FF6B35` replacing indigo)
+- Copy rewrite: all PT-BR with "marketeiro pessoal" tone and gírias
+- Plus Jakarta Sans display font
+- `lang="pt-BR"`, warm surface `#FFF8F0`
+
+### ✅ Phase 2 — Se sente vivo
+- Framer Motion: page transitions, staggered card grid, sequential content reveal
+- Multi-step loading: "Abrindo o site... 🌐" → "Lendo as cores... 🎨" → "A IA tá analisando... 🤖" → "Quase lá... ✨"
+- DOM/CSS `TypographicCard` replacing canvas (3 templates, real fonts, brand colors)
+- Toast system replacing inline error divs
+- Super-Brazilian copy with gírias throughout
+
+### ✅ Phase 3 — Seguro pra lançar
+- All Gemini calls moved to Express (`/api/analyze`, `/api/generate`, `/api/image`)
+- `GEMINI_API_KEY` removed from client bundle
+- Inline editing of generated content (hook, legenda, CTA, hashtags)
+- Per-field regeneration ("refazer" button per section)
+- Guided onboarding flow: `Onboarding.tsx` → URL pre-fill → auto-scan on `BrandForm` mount
+
+### 🔲 Phase 4 — Produto de verdade
 - [ ] Supabase Auth (magic link + Google OAuth) + RLS + `user_id` on all tables
-- [ ] Carousel format: 5-10 slide generation with narrative arc
-- [ ] Reels script format: hook (3s) + body + CTA + on-screen text suggestions
+- [ ] Carousel format: 5-10 slide generation with narrative arc (new `content_type` in `generated_posts`)
+- [ ] Reels script format: hook (3s) + body + CTA + on-screen text
 - [ ] Stories sequence: 3-5 story flow with engagement mechanics
-- [ ] Content calendar view (date assignment for posts)
-- [ ] Brand guidelines PDF/image export
+- [ ] Content calendar view
+- [ ] Brand guidelines export (PDF/image)
 
 ## Known Issues / Technical Debt
 
-1. **`BrandDetail.tsx` lines 110-113**: Directly mutates the `brand` prop during rescan (`brand.colors = ...`). Should call `onEdit(updatedBrand)` instead to go through React's rendering model.
-2. **No auth / no RLS**: All brands are globally readable/writable. Any client with the anon key can modify any row. Fix in Phase 4.
-3. **Framer Motion in bundle but unused**: 28KB sitting idle. Use it in Phase 2 or remove until then.
-4. **SPA scraping**: The `/api/scrape` endpoint uses `axios` + `cheerio` — JS-rendered sites (React/Next/Vue) return empty HTML. Consider Puppeteer for Phase 3+.
+1. **Prop mutation in `BrandDetail.tsx`** — `handleRescan` directly mutates `brand.colors`, `brand.primary_color`, etc. on the prop object. Should use `onEdit(updatedBrand)` to trigger a proper React re-render.
+2. **No auth / no RLS** — All Supabase tables are globally readable/writable with the anon key. Phase 4 priority.
+3. **SPA scraping** — `/api/scrape` uses `axios` + `cheerio`; JS-rendered sites (React/Next/Vue apps) return empty HTML. Consider Puppeteer for a future improvement.

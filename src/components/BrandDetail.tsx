@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Loader2, Wand2, ArrowLeft, Copy, Check, Download, Palette, Image as ImageIcon, Type as TypeIcon, RefreshCw, Pencil, Package, Clock, Hash } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from '../lib/supabase';
@@ -77,6 +77,83 @@ const imageModels = [
 ];
 const imageSizes = ["1K", "2K"];
 
+type EditableFieldProps = {
+  label: string;
+  fieldKey: keyof GeneratedContent;
+  value: string;
+  isEditing: boolean;
+  isRegenerating: boolean;
+  onEdit: () => void;
+  onSave: (value: string) => void;
+  onRegenerate: () => void;
+  multiline?: boolean;
+  className?: string;
+};
+
+function EditableField({ label, value, isEditing, isRegenerating, onEdit, onSave, onRegenerate, multiline = false, className = '' }: EditableFieldProps) {
+  const [localValue, setLocalValue] = useState(value);
+  useEffect(() => { setLocalValue(value); }, [value]);
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !multiline) { e.preventDefault(); onSave(localValue); }
+    if (e.key === 'Escape') onSave(localValue);
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1">
+        <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">{label}</h4>
+        <div className="flex items-center gap-2">
+          {isRegenerating ? (
+            <span className="text-xs text-neutral-400 flex items-center gap-1">
+              <Loader2 className="h-3 w-3 animate-spin" /> refazendo...
+            </span>
+          ) : (
+            <button
+              onClick={onRegenerate}
+              className="text-xs text-neutral-400 hover:text-[#FF6B35] transition-colors flex items-center gap-1"
+              title="Regerar só esse campo"
+            >
+              <RefreshCw className="h-3 w-3" /> refazer
+            </button>
+          )}
+        </div>
+      </div>
+      {isEditing ? (
+        multiline ? (
+          <textarea
+            autoFocus
+            value={localValue}
+            onChange={e => setLocalValue(e.target.value)}
+            onBlur={() => onSave(localValue)}
+            onKeyDown={handleKeyDown}
+            rows={4}
+            className="w-full text-sm text-neutral-700 bg-neutral-50 border border-[#FF6B35] rounded-lg p-2 focus:outline-none resize-none"
+          />
+        ) : (
+          <input
+            autoFocus
+            type="text"
+            value={localValue}
+            onChange={e => setLocalValue(e.target.value)}
+            onBlur={() => onSave(localValue)}
+            onKeyDown={handleKeyDown}
+            className={`w-full text-sm bg-neutral-50 border border-[#FF6B35] rounded-lg p-2 focus:outline-none ${className}`}
+          />
+        )
+      ) : (
+        <p
+          onClick={onEdit}
+          title="Clica pra editar"
+          className={`text-sm cursor-text hover:bg-neutral-50 rounded-lg p-1 -mx-1 transition-colors ${multiline ? 'text-neutral-700 whitespace-pre-wrap' : ''} ${className}`}
+        >
+          {value}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default function BrandDetail({ brand, onBack, onEdit, onError, onSuccess }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('generate');
 
@@ -98,6 +175,9 @@ export default function BrandDetail({ brand, onBack, onEdit, onError, onSuccess 
   const [editablePrompt, setEditablePrompt] = useState('');
   const [currentPostId, setCurrentPostId] = useState<string | null>(null);
   const [selectedTemplate, setSelectedTemplate] = useState(0);
+  const [editedContent, setEditedContent] = useState<GeneratedContent | null>(null);
+  const [editingField, setEditingField] = useState<keyof GeneratedContent | null>(null);
+  const [regeneratingField, setRegeneratingField] = useState<keyof GeneratedContent | null>(null);
 
   const cardRef = useRef<HTMLDivElement>(null);
 
@@ -180,6 +260,7 @@ export default function BrandDetail({ brand, onBack, onEdit, onError, onSuccess 
 
       const content: GeneratedContent = await generateRes.json();
       setGeneratedContent(content);
+      setEditedContent(content);
       setEditablePrompt(content.image_prompt);
 
       // Save to generated_posts and capture the row ID
@@ -278,6 +359,53 @@ export default function BrandDetail({ brand, onBack, onEdit, onError, onSuccess 
       onError?.(message);
     } finally {
       setIsGeneratingImage(false);
+    }
+  };
+
+  const handleRegenerateField = async (field: keyof GeneratedContent) => {
+    if (!editedContent) return;
+    setRegeneratingField(field);
+    try {
+      const { data: assets } = await supabase
+        .from('brand_assets')
+        .select('url, filename, type')
+        .eq('brand_id', brand.id);
+
+      const styleDescription = imageStyleDescriptions[imageStyle] || imageStyleDescriptions['Post Profissional (Canva-style)'];
+
+      const res = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          brand,
+          postType,
+          format,
+          imageStyle,
+          includeText,
+          imageStyleDescription: styleDescription,
+          assetCount: assets?.length || 0,
+          regenerateField: field,
+          currentContent: editedContent,
+        })
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || 'Deu ruim ao refazer 😬');
+      }
+
+      const newContent: GeneratedContent = await res.json();
+      setEditedContent(prev => prev ? { ...prev, [field]: newContent[field] } : prev);
+      if (field === 'image_prompt') setEditablePrompt(newContent[field]);
+
+      const fieldNames: Record<keyof GeneratedContent, string> = {
+        hook: 'Hook', caption: 'Legenda', cta: 'CTA', hashtags: 'Hashtags', image_prompt: 'Prompt'
+      };
+      onSuccess?.(`${fieldNames[field]} refeito! 🔄`);
+    } catch (err: unknown) {
+      onError?.(err instanceof Error ? err.message : 'Deu ruim ao refazer 😬');
+    } finally {
+      setRegeneratingField(null);
     }
   };
 
@@ -517,7 +645,7 @@ export default function BrandDetail({ brand, onBack, onEdit, onError, onSuccess 
                   <div className="px-6 py-4 border-b border-neutral-200 bg-neutral-50 flex justify-between items-center">
                     <h2 className="text-lg font-semibold text-neutral-900 font-display">Seu post tá pronto! 🎉</h2>
                     <button
-                      onClick={() => copyToClipboard(`${generatedContent.hook}\n\n${generatedContent.caption}\n\n${generatedContent.cta}\n\n${generatedContent.hashtags}`, 'copy')}
+                      onClick={() => copyToClipboard(`${editedContent?.hook}\n\n${editedContent?.caption}\n\n${editedContent?.cta}\n\n${editedContent?.hashtags}`, 'copy')}
                       className="inline-flex items-center px-3 py-1.5 border border-neutral-300 shadow-sm text-xs font-medium rounded text-neutral-700 bg-white hover:bg-neutral-50"
                     >
                       {copiedField === 'copy' ? <Check className="h-4 w-4 mr-1 text-emerald-500" /> : <Copy className="h-4 w-4 mr-1" />}
@@ -525,38 +653,62 @@ export default function BrandDetail({ brand, onBack, onEdit, onError, onSuccess 
                     </button>
                   </div>
                   <div className="p-6 space-y-4">
-                    <motion.div
-                      initial={{ opacity: 0, x: -8 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 0.1 }}
-                    >
-                      <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1">Hook</h4>
-                      <p className="text-lg font-bold text-neutral-900">{generatedContent.hook}</p>
+                    <motion.div initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.1 }}>
+                      <EditableField
+                        label="Hook"
+                        fieldKey="hook"
+                        value={editedContent?.hook || ''}
+                        isEditing={editingField === 'hook'}
+                        isRegenerating={regeneratingField === 'hook'}
+                        onEdit={() => setEditingField('hook')}
+                        onSave={val => { setEditedContent(prev => prev ? { ...prev, hook: val } : prev); setEditingField(null); }}
+                        onRegenerate={() => handleRegenerateField('hook')}
+                        className="font-bold text-neutral-900 text-lg"
+                      />
                     </motion.div>
-                    <motion.div
-                      initial={{ opacity: 0, x: -8 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 0.2 }}
-                    >
-                      <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1">Legenda</h4>
-                      <p className="text-sm text-neutral-700 whitespace-pre-wrap">{generatedContent.caption}</p>
+                    <motion.div initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 }}>
+                      <EditableField
+                        label="Legenda"
+                        fieldKey="caption"
+                        value={editedContent?.caption || ''}
+                        isEditing={editingField === 'caption'}
+                        isRegenerating={regeneratingField === 'caption'}
+                        onEdit={() => setEditingField('caption')}
+                        onSave={val => { setEditedContent(prev => prev ? { ...prev, caption: val } : prev); setEditingField(null); }}
+                        onRegenerate={() => handleRegenerateField('caption')}
+                        multiline
+                      />
                     </motion.div>
-                    <motion.div
-                      initial={{ opacity: 0, x: -8 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 0.3 }}
-                    >
-                      <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1">CTA</h4>
-                      <p className="text-sm font-medium text-[#FF6B35]">{generatedContent.cta}</p>
+                    <motion.div initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.3 }}>
+                      <EditableField
+                        label="CTA"
+                        fieldKey="cta"
+                        value={editedContent?.cta || ''}
+                        isEditing={editingField === 'cta'}
+                        isRegenerating={regeneratingField === 'cta'}
+                        onEdit={() => setEditingField('cta')}
+                        onSave={val => { setEditedContent(prev => prev ? { ...prev, cta: val } : prev); setEditingField(null); }}
+                        onRegenerate={() => handleRegenerateField('cta')}
+                        className="font-medium text-[#FF6B35]"
+                      />
                     </motion.div>
-                    <motion.div
-                      initial={{ opacity: 0, x: -8 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 0.4 }}
-                    >
-                      <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1">Hashtags</h4>
-                      <p className="text-sm text-neutral-500">{generatedContent.hashtags}</p>
+                    <motion.div initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.4 }}>
+                      <EditableField
+                        label="Hashtags"
+                        fieldKey="hashtags"
+                        value={editedContent?.hashtags || ''}
+                        isEditing={editingField === 'hashtags'}
+                        isRegenerating={regeneratingField === 'hashtags'}
+                        onEdit={() => setEditingField('hashtags')}
+                        onSave={val => { setEditedContent(prev => prev ? { ...prev, hashtags: val } : prev); setEditingField(null); }}
+                        onRegenerate={() => handleRegenerateField('hashtags')}
+                        multiline
+                        className="text-neutral-500"
+                      />
                     </motion.div>
+                  </div>
+                  <div className="px-6 pb-4">
+                    <p className="text-xs text-neutral-400">💡 Clica em qualquer texto pra editar, ou usa "refazer" pra gerar só aquele campo de novo</p>
                   </div>
                 </motion.div>
               )}
@@ -657,8 +809,8 @@ export default function BrandDetail({ brand, onBack, onEdit, onError, onSuccess 
                   >
                     <TypographicCard
                       brand={brand}
-                      hook={generatedContent.hook}
-                      cta={generatedContent.cta}
+                      hook={editedContent?.hook || generatedContent.hook}
+                      cta={editedContent?.cta || generatedContent.cta}
                       template={selectedTemplate}
                       isVertical={format.includes('1080x1920')}
                     />

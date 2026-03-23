@@ -173,8 +173,51 @@ Retorne um JSON com:
 
 app.post("/api/generate", async (req, res) => {
   try {
-    const { brand, postType, postVisualHint, format, imageStyle, includeText, imageStyleDescription } = req.body;
+    const { brand, postType, postVisualHint, format, imageStyle, includeText, imageStyleDescription, regenerateField, currentContent } = req.body;
     if (!brand) return res.status(400).json({ error: "brand required" });
+
+    // Partial regeneration — only regenerate one specific field
+    if (regenerateField && currentContent) {
+      const fieldLabel: Record<string, string> = {
+        hook: `hook (título impactante, max 10 palavras, em ${brand.language || 'pt-BR'})`,
+        caption: `caption (legenda completa em ${brand.language || 'pt-BR'}, max 300 chars, com quebras de linha naturais)`,
+        cta: `cta (chamada para ação, 1 linha curta, em ${brand.language || 'pt-BR'})`,
+        hashtags: `hashtags (15 hashtags relevantes como string, ex: "#tag1 #tag2")`,
+        image_prompt: `image_prompt (prompt DETALHADO em inglês para geração de imagem, sem códigos hexadecimais, mínimo 3 frases)`,
+      };
+      const regenPrompt = `Você é um especialista em marketing de conteúdo para Instagram.
+
+Contexto do post existente:
+- Hook: "${currentContent.hook}"
+- Legenda: "${currentContent.caption}"
+- CTA: "${currentContent.cta}"
+
+Brand kit:
+- Nome: ${brand.name}
+- Tom de voz: ${brand.tone}
+- Público-alvo: ${brand.target_audience}
+- Idioma: ${brand.language}
+- Tipo de post: ${postType}
+
+Gere APENAS um novo ${fieldLabel[regenerateField] || regenerateField} diferente e mais criativo.
+Retorne JSON com SOMENTE a chave "${regenerateField}".`;
+
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+      const regenResponse = await ai.models.generateContent({
+        model: 'gemini-3.1-pro-preview',
+        contents: regenPrompt,
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: { [regenerateField]: { type: Type.STRING } },
+            required: [regenerateField]
+          }
+        }
+      });
+      const regenResult = JSON.parse(regenResponse.text || '{}');
+      return res.json({ ...currentContent, ...regenResult });
+    }
 
     const assetContext = req.body.assetCount > 0
       ? `\n\nA marca possui ${req.body.assetCount} foto(s) de produto/referência disponíveis.`
