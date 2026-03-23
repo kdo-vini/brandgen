@@ -62,7 +62,7 @@ app.post("/api/scrape", async (req, res) => {
         try {
           const absoluteUrl = new URL(src, url).href;
           images.push(absoluteUrl);
-        } catch (e) {}
+        } catch (e) { }
       }
     });
 
@@ -83,10 +83,10 @@ app.post("/api/scrape", async (req, res) => {
           timeout: 5000,
         });
         const buffer = Buffer.from(imageResponse.data, "binary");
-        
+
         const vibrant = new Vibrant(buffer);
         const palette = await vibrant.getPalette();
-        
+
         if (palette.Vibrant) colors.push(palette.Vibrant.hex);
         if (palette.Muted) colors.push(palette.Muted.hex);
         if (palette.DarkVibrant) colors.push(palette.DarkVibrant.hex);
@@ -166,8 +166,8 @@ Retorne um JSON com:
     const analysis = JSON.parse(response.text || '{}');
     res.json(analysis);
   } catch (error: any) {
-    console.error("Analyze error:", error.message);
-    res.status(500).json({ error: error.message });
+    console.error("DEBUG: Analyze API Error!", JSON.stringify(error, null, 2));
+    res.status(500).json({ error: error.message || "A IA travou na análise. Tenta de novo? 🔄" });
   }
 });
 
