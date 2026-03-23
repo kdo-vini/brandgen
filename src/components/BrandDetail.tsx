@@ -29,12 +29,24 @@ const formats = [
 ];
 
 const imageStyles = [
-  'Realista',
-  'Arte estilo Canva',
+  'Post Profissional (Canva-style)',
+  'Fotográfico Realista',
+  'Dark Mode Premium',
+  'Gradiente Moderno',
+  'Minimalista Clean',
   'Cinematográfico (estúdio)',
-  'Minimalista',
-  'Ilustração 3D'
+  'Neon / Futurista'
 ];
+
+const imageStyleDescriptions: Record<string, string> = {
+  'Post Profissional (Canva-style)': 'A professional social media post design with a polished layout. Use a dark or branded background with smooth gradients. Include bold, modern sans-serif headline text overlaid on the design. Feature high-quality product photography or lifestyle imagery composited onto the background. Add subtle design elements like geometric shapes, light flares, glowing accents, or abstract decorative lines. The overall look should resemble a premium Canva or Adobe Express template used for Instagram or LinkedIn marketing.',
+  'Fotográfico Realista': 'A photorealistic social media post. Use a high-quality photograph as the hero element — either a product shot on a professional background or a lifestyle scene. Add a subtle color overlay or vignette matching the brand colors. The image should look like a professional marketing photo taken in a studio or real environment, suitable for an Instagram feed.',
+  'Dark Mode Premium': 'A sleek dark-themed social media post with a near-black or deep navy background. Feature bold white or bright-colored headline typography. Include glowing accent elements, subtle neon highlights, or luminous gradients. Showcase the product or a relevant object with dramatic studio lighting against the dark backdrop. The overall aesthetic should feel premium, tech-forward, and modern — like a high-end SaaS or tech product announcement.',
+  'Gradiente Moderno': 'A vibrant social media post with a bold, eye-catching gradient background blending the brand colors smoothly. Feature large, impactful sans-serif headline text in white or contrasting color. Include floating product images, mockups, or relevant icons/graphics arranged in a dynamic diagonal or layered composition. Add subtle glassmorphism effects, soft shadows, or frosted glass panels. The design should feel trendy and energetic.',
+  'Minimalista Clean': 'A clean, minimalist social media post design. Use a soft, light background (white, off-white, or very light pastel). Feature elegant thin and medium-weight typography with generous whitespace. Show the product or subject centered with soft shadows. Use the brand accent color sparingly in small details — a thin border, an accent line, or a small icon. The overall feel should be modern, airy, and sophisticated like a premium brand lookbook.',
+  'Cinematográfico (estúdio)': 'A cinematic, studio-quality social media post. Feature moody, dramatic lighting with deep shadows and selective highlights on the product or subject. Use a dark background with rich color tones — teal, amber, deep purple. The image should look like a frame from a high-budget commercial or movie. Add subtle lens flares, bokeh, or film grain for authenticity. Include bold, minimal text in a cinematic sans-serif or serif font.',
+  'Neon / Futurista': 'A futuristic cyber/neon themed social media post. Use a dark background with vibrant neon glow effects in electric blue, pink, purple, or green. Feature the product or subject illuminated by neon lights. Include digital grid lines, holographic effects, or futuristic HUD-style decorative elements. Bold, glowing typography with neon outline effects. The overall aesthetic should feel like cyberpunk or sci-fi marketing material.',
+};
 
 const aspectRatios = ["1:1", "3:4", "4:3", "9:16", "16:9", "1:4", "1:8", "4:1", "8:1"];
 const imageModels = [
@@ -49,7 +61,7 @@ export default function BrandDetail({ brand, onBack, onEdit }: Props) {
   // Generator state
   const [postType, setPostType] = useState('Dor do cliente');
   const [format, setFormat] = useState('Feed quadrado (1080x1080)');
-  const [imageStyle, setImageStyle] = useState('Realista');
+  const [imageStyle, setImageStyle] = useState('Post Profissional (Canva-style)');
   const [aspectRatio, setAspectRatio] = useState('1:1');
   const [imageModel, setImageModel] = useState('gemini-3.1-flash-image-preview');
   const [imageSize, setImageSize] = useState('1K');
@@ -127,6 +139,8 @@ export default function BrandDetail({ brand, onBack, onEdit }: Props) {
         ? `\nPalavras-chave da marca: ${brand.keywords.join(', ')}`
         : '';
 
+      const styleDescription = imageStyleDescriptions[imageStyle] || imageStyleDescriptions['Post Profissional (Canva-style)'];
+
       const prompt = `Com base no brand kit abaixo, gere o conteúdo para um post de Instagram.
 
 Brand kit:
@@ -150,7 +164,23 @@ Retorne um JSON com:
 - caption: legenda completa em ${brand.language || 'pt-BR'} com quebras de linha naturais (max 300 chars)
 - cta: chamada para ação final (1 linha)
 - hashtags: lista de 15 hashtags relevantes como string (ex: "#tag1 #tag2")
-- image_prompt: prompt em inglês para geração de imagem, com as cores ${brand.primary_color} e ${brand.secondary_color} incorporadas, estilo adequado para ${brand.product_type} e estilo visual "${imageStyle}", formato ${format}, SEM texto na imagem.`;
+- image_prompt: prompt DETALHADO em inglês para geração de imagem. IMPORTANTE — o prompt de imagem deve seguir TODAS estas regras:
+
+  1. ESTILO VISUAL OBRIGATÓRIO: ${styleDescription}
+
+  2. COMPOSIÇÃO: Descreva um design de post para redes sociais com layout profissional. NÃO gere ilustrações vetoriais, flat design, clipart, ou ícones simples. A imagem deve parecer um template premium de design criado no Canva ou Adobe Express.
+
+  3. FOTOGRAFIA: Se relevante ao produto (${brand.product_type}), inclua elementos fotográficos realistas — produto com iluminação profissional, mockups, ou cenas lifestyle. Use composição em camadas com o produto sobre o background estilizado.
+
+  4. CORES DA MARCA: Use as cores ${brand.primary_color} (primária) e ${brand.secondary_color} (secundária) como cores dominantes nos gradientes, fundos, e acentos visuais.
+
+  5. TIPOGRAFIA: Inclua texto tipográfico bold e moderno no design — um título/headline curto e impactante e opcionalmente um subtítulo menor. Use fontes sans-serif modernas e pesadas.
+
+  6. ELEMENTOS DE DESIGN: Adicione elementos decorativos sutis como: formas geométricas abstratas, linhas decorativas, efeitos de luz, sombras suaves, ou partículas. NÃO use clipart ou ícones cartoon.
+
+  7. FORMATO: ${format}. A imagem deve ser otimizada para este formato exato.
+
+  8. O prompt deve ser específico, detalhado (mínimo 3 frases), e em inglês.`;
 
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
       const response = await ai.models.generateContent({
