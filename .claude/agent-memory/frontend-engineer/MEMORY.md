@@ -20,9 +20,10 @@
 - `font-sans` = Inter — body/default
 
 ## Key Files
-- `src/App.tsx` — AnimatePresence page transitions, useToast, ToastContainer
-- `src/components/BrandList.tsx` — staggered card animations with motion
-- `src/components/BrandForm.tsx` — multi-step loadingStep, motion.button whileTap
+- `src/App.tsx` — AnimatePresence page transitions, useToast, ToastContainer; `onboardingUrl` state bridges Onboarding→BrandForm
+- `src/components/Onboarding.tsx` — full-screen first-run welcome; fadeUp helper, staggered pills, no loading state (just calls onStartWithUrl)
+- `src/components/BrandList.tsx` — early return `<Onboarding>` when brands empty; staggered cards when populated
+- `src/components/BrandForm.tsx` — `initialUrl` prop + auto-scan useEffect; `handleScan(urlOverride?)` pattern
 - `src/components/BrandDetail.tsx` — AnimatePresence content reveal, motion.button, onError/onSuccess props
 - `src/components/TypographicCard.tsx` — 3 templates (Gradiente/Dark/Clean), inline styles for brand colors
 - `src/components/AssetUploader.tsx`
@@ -59,5 +60,11 @@
 - Error messages with emojis: 😬 😅 🔄 😄 🙈 👆
 - Success toasts: 'Marca salva! Arrasou 🎉', 'Post criado! Agora é só copiar 🔥'
 - Never formal — always tuteia
+
+## Onboarding Flow
+- `Onboarding.tsx` is a full-screen component, not a modal — BrandList returns it directly (early return)
+- URL passed via `App.tsx` `onboardingUrl` state: set on `onCreateBrandWithUrl`, cleared on BrandForm save/cancel
+- `handleScan(urlOverride?)` pattern: always prefer `urlOverride ?? stateUrl` so auto-scan from `useEffect` works before state settles
+- Place auto-scan `useEffect` AFTER `handleScan` definition to avoid TDZ issues with `const`
 
 ## Detailed patterns: see `patterns.md`

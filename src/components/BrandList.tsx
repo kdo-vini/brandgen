@@ -1,12 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { Plus, Trash2, Loader2, Globe, Palette } from 'lucide-react';
+import { Plus, Trash2, Loader2, Globe } from 'lucide-react';
 import { motion } from 'motion/react';
 import { supabase } from '../lib/supabase';
 import type { Brand } from '../types';
+import Onboarding from './Onboarding';
 
 type Props = {
   onSelectBrand: (brand: Brand) => void;
   onCreateBrand: () => void;
+  onCreateBrandWithUrl?: (url: string) => void;
   onError?: (msg: string) => void;
 };
 
@@ -15,7 +17,7 @@ const cardVariants = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.3, ease: 'easeOut' as const } },
 };
 
-export default function BrandList({ onSelectBrand, onCreateBrand, onError }: Props) {
+export default function BrandList({ onSelectBrand, onCreateBrand, onCreateBrandWithUrl, onError }: Props) {
   const [brands, setBrands] = useState<Brand[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState<string | null>(null);
@@ -59,6 +61,15 @@ export default function BrandList({ onSelectBrand, onCreateBrand, onError }: Pro
     );
   }
 
+  if (brands.length === 0) {
+    return (
+      <Onboarding
+        onStartWithUrl={(url) => onCreateBrandWithUrl?.(url) ?? onCreateBrand()}
+        onStartManual={onCreateBrand}
+      />
+    );
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-8">
@@ -78,24 +89,7 @@ export default function BrandList({ onSelectBrand, onCreateBrand, onError }: Pro
         </button>
       </div>
 
-      {brands.length === 0 ? (
-        <div className="flex flex-col items-center justify-center h-64 text-center px-4 bg-white rounded-xl border border-neutral-200 border-dashed">
-          <div className="w-16 h-16 bg-[#FFF1EB] rounded-full flex items-center justify-center mb-4">
-            <Palette className="h-8 w-8 text-[#FF8C5A]" />
-          </div>
-          <h3 className="text-lg font-semibold text-neutral-900 mb-2 font-display">Eita, tá vazio aqui! 👀</h3>
-          <p className="text-neutral-500 max-w-md mb-6">
-            Cola o link do seu site e a gente analisa tudo — cores, tom de voz, proposta de valor. Em segundos, sem enrolação.
-          </p>
-          <button
-            onClick={onCreateBrand}
-            className="inline-flex items-center px-4 py-2.5 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-[#FF6B35] hover:bg-[#E55A28] transition-colors"
-          >
-            Bora criar! 🚀
-          </button>
-        </div>
-      ) : (
-        <motion.div
+      <motion.div
           className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
           initial="hidden"
           animate="visible"
@@ -188,7 +182,6 @@ export default function BrandList({ onSelectBrand, onCreateBrand, onError }: Pro
             </div>
           </motion.div>
         </motion.div>
-      )}
     </div>
   );
 }

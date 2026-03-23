@@ -35,6 +35,7 @@ export default function App() {
   const [hasApiKey, setHasApiKey] = useState<boolean>(true);
   const [view, setView] = useState<AppView>('list');
   const [selectedBrand, setSelectedBrand] = useState<Brand | null>(null);
+  const [onboardingUrl, setOnboardingUrl] = useState<string>('');
   const { toasts, addToast, removeToast } = useToast();
 
   useEffect(() => {
@@ -128,6 +129,11 @@ export default function App() {
                   setSelectedBrand(null);
                   setView('create');
                 }}
+                onCreateBrandWithUrl={(url) => {
+                  setSelectedBrand(null);
+                  setOnboardingUrl(url);
+                  setView('create');
+                }}
                 onError={addToast}
               />
             </motion.div>
@@ -143,11 +149,16 @@ export default function App() {
               transition={pageTransition}
             >
               <BrandForm
+                initialUrl={onboardingUrl}
                 onSaved={(brand) => {
                   setSelectedBrand(brand);
+                  setOnboardingUrl('');
                   setView('detail');
                 }}
-                onCancel={() => setView('list')}
+                onCancel={() => {
+                  setOnboardingUrl('');
+                  setView('list');
+                }}
                 onError={addToast}
                 onSuccess={(msg) => addToast(msg, 'success')}
               />

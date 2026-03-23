@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Loader2, Wand2, Link as LinkIcon, Save, ArrowLeft } from 'lucide-react';
 import { motion } from 'motion/react';
 import { supabase } from '../lib/supabase';
@@ -6,6 +6,7 @@ import type { Brand, ScrapeResult, GeminiAnalysis } from '../types';
 
 type Props = {
   existingBrand?: Brand | null;
+  initialUrl?: string;
   onSaved: (brand: Brand) => void;
   onCancel: () => void;
   onError?: (msg: string) => void;
@@ -24,8 +25,8 @@ const loadingSteps = [
   'Quase lá, só um instante... ✨',
 ];
 
-export default function BrandForm({ existingBrand, onSaved, onCancel, onError, onSuccess }: Props) {
-  const [url, setUrl] = useState(existingBrand?.url || '');
+export default function BrandForm({ existingBrand, initialUrl, onSaved, onCancel, onError, onSuccess }: Props) {
+  const [url, setUrl] = useState(existingBrand?.url || initialUrl || '');
   const [loadingStep, setLoadingStep] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -46,17 +47,18 @@ export default function BrandForm({ existingBrand, onSaved, onCancel, onError, o
   const [description, setDescription] = useState(existingBrand?.description || '');
   const [keywords, setKeywords] = useState(existingBrand?.keywords?.join(', ') || '');
 
-  const handleScan = async () => {
-    if (!url) {
+  const handleScan = async (urlOverride?: string) => {
+    const targetUrl = urlOverride ?? url;
+    if (!targetUrl) {
       onError?.('Opa, cola uma URL aí primeiro! 👆');
       return;
     }
 
-    let formattedUrl = url;
+    let formattedUrl = targetUrl;
     if (!formattedUrl.startsWith('http://') && !formattedUrl.startsWith('https://')) {
       formattedUrl = 'https://' + formattedUrl;
-      setUrl(formattedUrl);
     }
+    setUrl(formattedUrl);
 
     setLoadingStep(loadingSteps[0]);
 
@@ -119,6 +121,13 @@ export default function BrandForm({ existingBrand, onSaved, onCancel, onError, o
       setLoadingStep(null);
     }
   };
+
+  // Auto-trigger scan when arriving from onboarding with a pre-filled URL
+  useEffect(() => {
+    if (initialUrl && !existingBrand) {
+      handleScan(initialUrl);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSave = async () => {
     if (!name.trim()) {

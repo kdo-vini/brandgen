@@ -17,12 +17,28 @@ type Props = {
 
 type Tab = 'generate' | 'assets' | 'history';
 
-const postTypes = [
-  'Dor do cliente',
-  'Solução / produto',
-  'Bastidores / founder',
-  'CTA / oferta direta',
-  'Prova social / depoimento'
+const postTypes: { id: string; label: string; visualHint: string }[] = [
+  // Consciência / topo de funil
+  { id: 'Dor do cliente', label: '😩 Dor do cliente', visualHint: 'Show a frustrated or overwhelmed person facing a recognizable problem. Use tension in the composition — darker tones, contrast lighting.' },
+  { id: 'Solução / produto', label: '✅ Solução / produto', visualHint: 'Showcase the product or service as the hero. Use bright, positive lighting and a clean composition that highlights the solution clearly.' },
+  { id: 'Lançamento', label: '🚀 Lançamento / novidade', visualHint: 'Create a dramatic, energetic visual with bold colors, explosive shapes or particles suggesting a launch. Use vibrant accent colors and dynamic composition.' },
+  { id: 'Oferta relâmpago', label: '⚡ Oferta relâmpago', visualHint: 'Create urgency with bold red, orange or yellow accents. Use visual elements like countdown or lightning bolt shapes. High contrast, immediately eye-catching.' },
+
+  // Confiança / meio de funil
+  { id: 'Prova social / depoimento', label: 'Prova social / depoimento', visualHint: 'Feature a close-up of a happy customer or a testimonial quote overlay. Warm, trustworthy color palette. Candid or portrait photography style.' },
+  { id: 'Bastidores / founder', label: 'Bastidores / founder story', visualHint: 'Show a real, behind-the-scenes moment — the founder working, a workspace, or a candid team shot. Authentic and relatable. Use warm, lifestyle photography tones.' },
+  { id: 'Comparação antes/depois', label: 'Antes e depois', visualHint: 'Split-screen or side-by-side composition showing contrast between the problem state and the result state. Strong visual contrast between the two halves.' },
+  { id: 'Número / resultado', label: 'Número / resultado', visualHint: 'Feature a large, bold statistic or result number as the focal point. Professional data-visualization style with brand colors.' },
+
+  // Engajamento / conexão
+  { id: 'Pergunta / enquete', label: 'Pergunta / enquete', visualHint: 'Use an intriguing visual that sparks curiosity. Minimalist background with a bold central question or thought. Inviting and conversational tone.' },
+  { id: 'Dica / tutorial', label: 'Dica / tutorial', visualHint: 'Clean educational layout with numbered steps or a visual tip. Use icons, arrows or callouts overlaid on a light or branded background.' },
+  { id: 'Mito vs. Verdade', label: 'Mito vs. Verdade', visualHint: 'Bold comparison visual with two contrasting sides — one with a red/negative tone for the myth, one with green/positive for the truth.' },
+  { id: 'Citação inspiracional', label: 'Citação inspiracional', visualHint: 'Elegant typographic quote design. Soft background with stylized typography as the hero. Optional: subtle bokeh or texture background.' },
+
+  // Conversão / fundo de funil
+  { id: 'CTA / oferta direta', label: 'CTA / oferta direta', visualHint: 'High-impact visual with a strong, direct call-to-action. Bold button-like elements or arrows pointing to the offer. Use the brand primary color prominently.' },
+  { id: 'Evento / webinar', label: 'Evento / webinar', visualHint: 'Professional event announcement design with date and time prominently featured. Polished, corporate aesthetic with brand colors and clean layout.' },
 ];
 
 const formats = [
@@ -59,13 +75,13 @@ const imageModels = [
   { id: 'gemini-3-pro-image-preview', name: 'Nano Banana Pro (Thinking)', type: 'nanoBanana' },
   { id: 'gemini-3.1-flash-image-preview', name: 'Nano Banana 2 Flash', type: 'nanoBanana' }
 ];
-const imageSizes = ["1K", "2K", "4K"];
+const imageSizes = ["1K", "2K"];
 
 export default function BrandDetail({ brand, onBack, onEdit, onError, onSuccess }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('generate');
 
   // Generator state
-  const [postType, setPostType] = useState('Dor do cliente');
+  const [postType, setPostType] = useState(postTypes[0].id);
   const [format, setFormat] = useState('Feed quadrado (1080x1080)');
   const [imageStyle, setImageStyle] = useState('Post Profissional (Canva-style)');
   const [aspectRatio, setAspectRatio] = useState('1:1');
@@ -148,6 +164,7 @@ export default function BrandDetail({ brand, onBack, onEdit, onError, onSuccess 
         body: JSON.stringify({
           brand,
           postType,
+          postVisualHint: postTypes.find(p => p.id === postType)?.visualHint || '',
           format,
           imageStyle,
           includeText,
@@ -386,11 +403,10 @@ export default function BrandDetail({ brand, onBack, onEdit, onError, onSuccess 
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-              activeTab === tab.id
-                ? 'bg-white text-neutral-900 shadow-sm'
-                : 'text-neutral-500 hover:text-neutral-700'
-            }`}
+            className={`flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === tab.id
+              ? 'bg-white text-neutral-900 shadow-sm'
+              : 'text-neutral-500 hover:text-neutral-700'
+              }`}
           >
             {tab.icon}
             {tab.label}
@@ -412,7 +428,7 @@ export default function BrandDetail({ brand, onBack, onEdit, onError, onSuccess 
               <div>
                 <label className="block text-sm font-medium text-neutral-700 mb-1">Tipo de post</label>
                 <select value={postType} onChange={(e) => setPostType(e.target.value)} className="block w-full pl-3 pr-10 py-2 text-base border-neutral-300 focus:outline-none focus:ring-[#FF6B35] focus:border-[#FF6B35] sm:text-sm rounded-lg border">
-                  {postTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                  {postTypes.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
                 </select>
               </div>
 
@@ -465,13 +481,11 @@ export default function BrandDetail({ brand, onBack, onEdit, onError, onSuccess 
                 <button
                   type="button"
                   onClick={() => setIncludeText(!includeText)}
-                  className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                    includeText ? 'bg-[#FF6B35]' : 'bg-neutral-300'
-                  }`}
+                  className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${includeText ? 'bg-[#FF6B35]' : 'bg-neutral-300'
+                    }`}
                 >
-                  <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                    includeText ? 'translate-x-5' : 'translate-x-0'
-                  }`} />
+                  <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${includeText ? 'translate-x-5' : 'translate-x-0'
+                    }`} />
                 </button>
               </div>
 
@@ -626,11 +640,10 @@ export default function BrandDetail({ brand, onBack, onEdit, onError, onSuccess 
                         key={i}
                         onClick={() => setSelectedTemplate(i)}
                         aria-pressed={selectedTemplate === i}
-                        className={`flex-1 h-8 rounded-lg border-2 transition-all text-xs font-medium ${
-                          selectedTemplate === i
-                            ? 'border-[#FF6B35] bg-[#FFF1EB] text-[#FF6B35]'
-                            : 'border-neutral-200 text-neutral-500 hover:border-neutral-300 bg-white'
-                        }`}
+                        className={`flex-1 h-8 rounded-lg border-2 transition-all text-xs font-medium ${selectedTemplate === i
+                          ? 'border-[#FF6B35] bg-[#FFF1EB] text-[#FF6B35]'
+                          : 'border-neutral-200 text-neutral-500 hover:border-neutral-300 bg-white'
+                          }`}
                       >
                         {label}
                       </button>

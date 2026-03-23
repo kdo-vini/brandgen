@@ -173,7 +173,7 @@ Retorne um JSON com:
 
 app.post("/api/generate", async (req, res) => {
   try {
-    const { brand, postType, format, imageStyle, includeText, imageStyleDescription } = req.body;
+    const { brand, postType, postVisualHint, format, imageStyle, includeText, imageStyleDescription } = req.body;
     if (!brand) return res.status(400).json({ error: "brand required" });
 
     const assetContext = req.body.assetCount > 0
@@ -240,19 +240,21 @@ Retorne um JSON com:
 
   2. COMPOSIÇÃO: A imagem gerada É o próprio post final — ela deve preencher o frame completo sem nenhuma borda, moldura, sombra externa ou background adicional ao redor. NÃO gere um mockup de post, NÃO coloque a imagem dentro de um quadrado com fundo extra, NÃO simule como um post apareceria numa tela. A imagem deve ter elementos visuais de alta qualidade: fotografia profissional, gradientes, formas, luz. Proibido: flat design, vetores simples, clipart, ícones cartoon.
 
-  3. FOTOGRAFIA: Se relevante ao produto (${brand.product_type}), inclua elementos fotográficos realistas — produto com iluminação profissional, mockups, ou cenas lifestyle.
+  3. CONTEXTO VISUAL DO POST: ${postVisualHint ? postVisualHint : `This is a ${postType} post — adapt the visual composition to match this content type.`}
 
-  4. CORES DA MARCA: Use as cores "${hexToColorName(brand.primary_color)}" (primária) e "${hexToColorName(brand.secondary_color)}" (secundária) como cores dominantes. NUNCA inclua códigos hexadecimais no prompt.
+  4. FOTOGRAFIA: Se relevante ao produto (${brand.product_type}), inclua elementos fotográficos realistas — produto com iluminação profissional, mockups, ou cenas lifestyle.
 
-  5. TIPOGRAFIA: ${includeText ? `Inclua texto tipográfico bold e moderno no design em ${brand.language || 'pt-BR'} — um título/headline curto e impactante. Use fontes sans-serif modernas.` : 'NÃO inclua NENHUM texto na imagem.'}
+  5. CORES DA MARCA: Use as cores "${hexToColorName(brand.primary_color)}" (primária) e "${hexToColorName(brand.secondary_color)}" (secundária) como cores dominantes. NUNCA inclua códigos hexadecimais no prompt.
 
-  6. ELEMENTOS DE DESIGN: Adicione elementos decorativos sutis. NÃO use clipart ou ícones cartoon.
+  6. TIPOGRAFIA: ${includeText ? `Inclua texto tipográfico bold e moderno no design em ${brand.language || 'pt-BR'} — um título/headline curto e impactante. Use fontes sans-serif modernas.` : 'NÃO inclua NENHUM texto na imagem.'}
 
-  7. FORMATO: ${format}. A imagem deve ser otimizada para este formato exato.
+  7. ELEMENTOS DE DESIGN: Adicione elementos decorativos sutis. NÃO use clipart ou ícones cartoon.
 
-  8. O prompt deve ser específico, detalhado (mínimo 3 frases), e em inglês.
+  8. FORMATO: ${format}. A imagem deve ser otimizada para este formato exato.
 
-  9. PROIBIDO: NUNCA inclua códigos hexadecimais de cores no prompt.`;
+  9. O prompt deve ser específico, detalhado (mínimo 3 frases), e em inglês.
+
+  10. PROIBIDO: NUNCA inclua códigos hexadecimais de cores no prompt.`;
 
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
     const response = await ai.models.generateContent({
