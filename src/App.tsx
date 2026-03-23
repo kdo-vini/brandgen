@@ -64,10 +64,15 @@ export default function App() {
       setAuthLoading(false);
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      setUser(session?.user ?? null);
-      if (event === 'SIGNED_IN') setView('list');
-      if (event === 'SIGNED_OUT') setView('landing');
-      if (event === 'PASSWORD_RECOVERY') setView('reset-password');
+      const newUser = session?.user ?? null;
+      setUser(newUser);
+      
+      if (event === 'SIGNED_OUT') {
+        setView('landing');
+      }
+      if (event === 'PASSWORD_RECOVERY') {
+        setView('reset-password');
+      }
     });
     return () => subscription.unsubscribe();
   }, []);
