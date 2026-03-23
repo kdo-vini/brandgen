@@ -32,7 +32,7 @@ export default function ResetPasswordPage({ onSuccess, onError, onCompleted }: P
       onSuccess('Senha atualizada com sucesso! 🚀');
       onCompleted();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Erro ao atualizar a senha. Tente novamente.';
+      const msg = err instanceof Error ? err.message : 'Erro ao atualizar a senha 😬 Tenta de novo?';
       onError(msg);
     } finally {
       setIsLoading(false);

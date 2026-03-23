@@ -173,9 +173,9 @@ export default function ProfilePage({ user, onBack, onLogout, onError, onSuccess
                 className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold"
                 style={{ backgroundColor: '#FFF1EB', color: '#FF6B35' }}
               >
-                Plano Gratis
+                Plano Grátis
               </span>
-              <span className="text-sm text-neutral-500">ate 3 marcas, 10 posts/dia</span>
+              <span className="text-sm text-neutral-500">Até 3 marcas, 10 posts/dia</span>
             </div>
           </div>
 
@@ -189,7 +189,7 @@ export default function ProfilePage({ user, onBack, onLogout, onError, onSuccess
           </button>
 
           <p className="mt-4 text-xs text-neutral-400 leading-relaxed">
-            Em breve: planos Pro e Business com mais marcas, posts ilimitados e exportacao PDF.
+            Em breve: planos Pro e Business com mais marcas, posts ilimitados e exportação PDF.
           </p>
         </section>
 
@@ -257,7 +257,7 @@ export default function ProfilePage({ user, onBack, onLogout, onError, onSuccess
               <div>
                 <p className="text-sm font-medium text-neutral-800">Sair da conta</p>
                 <p className="text-xs text-neutral-500 mt-0.5">
-                  Encerra a sessao atual neste dispositivo.
+                  Encerra a sessão atual neste dispositivo.
                 </p>
               </div>
               <button

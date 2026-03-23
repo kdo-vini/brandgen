@@ -15,10 +15,37 @@ type Props = {
   onSuccess?: (msg: string) => void;
 };
 
-const productTypes = ['saas', 'ecommerce', 'food', 'service', 'other'];
-const tones = ['formal', 'casual', 'bold', 'friendly'];
-const languages = ['pt-BR', 'en', 'es'];
-const emojiStyles = ['minimal', 'moderate', 'heavy'];
+const productTypeLabels: Record<string, string> = {
+  saas: 'SaaS / Sistema',
+  ecommerce: 'E-commerce / Loja',
+  food: 'Alimentação / Gastronomia',
+  service: 'Serviço / Consultoria',
+  other: 'Outro'
+};
+
+const toneLabels: Record<string, string> = {
+  formal: 'Formal',
+  casual: 'Casual',
+  bold: 'Impactante (Bold)',
+  friendly: 'Amigável'
+};
+
+const languageLabels: Record<string, string> = {
+  'pt-BR': 'Português (Brasil)',
+  en: 'Inglês',
+  es: 'Espanhol'
+};
+
+const emojiStyleLabels: Record<string, string> = {
+  minimal: 'Minimalista',
+  moderate: 'Moderado',
+  heavy: 'Muitos emojis'
+};
+
+const productTypes = Object.keys(productTypeLabels);
+const tones = Object.keys(toneLabels);
+const languages = Object.keys(languageLabels);
+const emojiStyles = Object.keys(emojiStyleLabels);
 
 const loadingSteps = [
   'Abrindo o site... 🌐',
@@ -209,7 +236,7 @@ export default function BrandForm({ user, existingBrand, initialUrl, onSaved, on
           className="inline-flex items-center text-sm text-neutral-500 hover:text-neutral-700 transition-colors"
         >
           <ArrowLeft className="h-4 w-4 mr-1" />
-          ← Voltar
+          Voltar
         </button>
         <h2 className="text-2xl font-bold text-neutral-900 font-display">
           {existingBrand ? 'Editar marca' : 'Nova marca'}
@@ -287,7 +314,7 @@ export default function BrandForm({ user, existingBrand, initialUrl, onSaved, on
               onChange={(e) => setProductType(e.target.value)}
               className="block w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-[#FF6B35] focus:border-[#FF6B35] sm:text-sm"
             >
-              {productTypes.map(t => <option key={t} value={t} className="capitalize">{t}</option>)}
+              {productTypes.map(t => <option key={t} value={t}>{productTypeLabels[t]}</option>)}
             </select>
           </div>
 
@@ -299,7 +326,7 @@ export default function BrandForm({ user, existingBrand, initialUrl, onSaved, on
               onChange={(e) => setTone(e.target.value)}
               className="block w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-[#FF6B35] focus:border-[#FF6B35] sm:text-sm"
             >
-              {tones.map(t => <option key={t} value={t} className="capitalize">{t}</option>)}
+              {tones.map(t => <option key={t} value={t}>{toneLabels[t]}</option>)}
             </select>
           </div>
 
@@ -311,7 +338,7 @@ export default function BrandForm({ user, existingBrand, initialUrl, onSaved, on
               onChange={(e) => setLanguage(e.target.value)}
               className="block w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-[#FF6B35] focus:border-[#FF6B35] sm:text-sm"
             >
-              {languages.map(l => <option key={l} value={l}>{l}</option>)}
+              {languages.map(l => <option key={l} value={l}>{languageLabels[l]}</option>)}
             </select>
           </div>
 
@@ -323,7 +350,7 @@ export default function BrandForm({ user, existingBrand, initialUrl, onSaved, on
               onChange={(e) => setEmojiStyle(e.target.value)}
               className="block w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-[#FF6B35] focus:border-[#FF6B35] sm:text-sm"
             >
-              {emojiStyles.map(e => <option key={e} value={e} className="capitalize">{e}</option>)}
+              {emojiStyles.map(e => <option key={e} value={e}>{emojiStyleLabels[e]}</option>)}
             </select>
           </div>
         </div>

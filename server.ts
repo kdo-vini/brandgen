@@ -133,13 +133,15 @@ Cores predominantes: ${scraped.colors?.join(', ')}
 
 Retorne um JSON com:
 - brand_name: nome da marca
-- product_type: 'saas' | 'ecommerce' | 'food' | 'service' | 'other'
+- product_type: 'Sistema' | 'ecommerce' | 'food' | 'service' | 'other'
 - tone: 'formal' | 'casual' | 'bold' | 'friendly'
 - target_audience: descrição em 1 frase
 - value_proposition: proposta de valor principal em 1 frase
 - key_pain: principal dor que o produto resolve
-- language: 'pt-BR' | 'en' | 'es'
-- emoji_style: 'minimal' | 'moderate' | 'heavy'`;
+- language: 'pt-BR' | 'en' | 'es' (escolher preferencialmente pt-BR se o site for brasileiro)
+- emoji_style: 'minimal' | 'moderate' | 'heavy'
+
+IMPORTANTE: Toda a análise deve ser feita em Português Brasileiro (pt-BR) com um tom amigável e informal.`;
 
     const response = await ai.models.generateContent({
       model: 'gemini-3.1-pro-preview',
@@ -185,7 +187,7 @@ app.post("/api/generate", async (req, res) => {
         hashtags: `hashtags (15 hashtags relevantes como string, ex: "#tag1 #tag2")`,
         image_prompt: `image_prompt (prompt DETALHADO em inglês para geração de imagem, sem códigos hexadecimais, mínimo 3 frases)`,
       };
-      const regenPrompt = `Você é um especialista em marketing de conteúdo para Instagram.
+      const regenPrompt = `Você é um especialista em marketing de conteúdo brasileiro, focado no Instagram. Use gírias naturais como "bora", "arrasou", "eita".
 
 Contexto do post existente:
 - Hook: "${currentContent.hook}"
@@ -297,7 +299,9 @@ Retorne um JSON com:
 
   9. O prompt deve ser específico, detalhado (mínimo 3 frases), e em inglês.
 
-  10. PROIBIDO: NUNCA inclua códigos hexadecimais de cores no prompt.`;
+  10. PROIBIDO: NUNCA inclua códigos hexadecimais de cores no prompt.
+
+IMPORTANTE: O hook, caption e cta DEVEM estar em Português Brasileiro (pt-BR) com tom informal e gírias, a menos que o idioma da marca seja explicitamente outro.`;
 
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
     const response = await ai.models.generateContent({

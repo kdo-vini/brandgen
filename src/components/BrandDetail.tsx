@@ -50,23 +50,23 @@ const formats = [
 ];
 
 const imageStyles = [
-  'Post Profissional (Canva-style)',
+  'Post Profissional (Canva)',
   'Fotográfico Realista',
-  'Dark Mode Premium',
+  'Dark Mode Premium (Escuro)',
   'Gradiente Moderno',
-  'Minimalista Clean',
-  'Cinematográfico (estúdio)',
+  'Minimalista (Clean)',
+  'Cinematográfico (Estúdio)',
   'Neon / Futurista'
 ];
 
 const imageStyleDescriptions: Record<string, string> = {
-  'Post Profissional (Canva-style)': 'A professional social media post design with a polished layout. Use a dark or branded background with smooth gradients. Include bold, modern sans-serif headline text overlaid on the design. Feature high-quality product photography or lifestyle imagery composited onto the background. Add subtle design elements like geometric shapes, light flares, glowing accents, or abstract decorative lines. The overall look should resemble a premium Canva or Adobe Express template used for Instagram or LinkedIn marketing.',
-  'Fotográfico Realista': 'A photorealistic social media post. Use a high-quality photograph as the hero element — either a product shot on a professional background or a lifestyle scene. Add a subtle color overlay or vignette matching the brand colors. The image should look like a professional marketing photo taken in a studio or real environment, suitable for an Instagram feed.',
-  'Dark Mode Premium': 'A sleek dark-themed social media post with a near-black or deep navy background. Feature bold white or bright-colored headline typography. Include glowing accent elements, subtle neon highlights, or luminous gradients. Showcase the product or a relevant object with dramatic studio lighting against the dark backdrop. The overall aesthetic should feel premium, tech-forward, and modern — like a high-end SaaS or tech product announcement.',
-  'Gradiente Moderno': 'A vibrant social media post with a bold, eye-catching gradient background blending the brand colors smoothly. Feature large, impactful sans-serif headline text in white or contrasting color. Include floating product images, mockups, or relevant icons/graphics arranged in a dynamic diagonal or layered composition. Add subtle glassmorphism effects, soft shadows, or frosted glass panels. The design should feel trendy and energetic.',
-  'Minimalista Clean': 'A clean, minimalist social media post design. Use a soft, light background (white, off-white, or very light pastel). Feature elegant thin and medium-weight typography with generous whitespace. Show the product or subject centered with soft shadows. Use the brand accent color sparingly in small details — a thin border, an accent line, or a small icon. The overall feel should be modern, airy, and sophisticated like a premium brand lookbook.',
-  'Cinematográfico (estúdio)': 'A cinematic, studio-quality social media post. Feature moody, dramatic lighting with deep shadows and selective highlights on the product or subject. Use a dark background with rich color tones — teal, amber, deep purple. The image should look like a frame from a high-budget commercial or movie. Add subtle lens flares, bokeh, or film grain for authenticity. Include bold, minimal text in a cinematic sans-serif or serif font.',
-  'Neon / Futurista': 'A futuristic cyber/neon themed social media post. Use a dark background with vibrant neon glow effects in electric blue, pink, purple, or green. Feature the product or subject illuminated by neon lights. Include digital grid lines, holographic effects, or futuristic HUD-style decorative elements. Bold, glowing typography with neon outline effects. The overall aesthetic should feel like cyberpunk or sci-fi marketing material.',
+  'Post Profissional (Canva)': 'A professional social media post design with a polished layout...',
+  'Fotográfico Realista': 'A photorealistic social media post...',
+  'Dark Mode Premium (Escuro)': 'A sleek dark-themed social media post with a near-black or deep navy background...',
+  'Gradiente Moderno': 'A vibrant social media post with a bold, eye-catching gradient background...',
+  'Minimalista (Clean)': 'A clean, minimalist social media post design...',
+  'Cinematográfico (Estúdio)': 'A cinematic, studio-quality social media post...',
+  'Neon / Futurista': 'A futuristic cyber/neon themed social media post...',
 };
 
 const aspectRatios = ["1:1", "3:4", "4:3", "9:16", "16:9", "1:4", "1:8", "4:1", "8:1"];
@@ -162,7 +162,7 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
   // Generator state
   const [postType, setPostType] = useState(postTypes[0].id);
   const [format, setFormat] = useState('Feed quadrado (1080x1080)');
-  const [imageStyle, setImageStyle] = useState('Post Profissional (Canva-style)');
+  const [imageStyle, setImageStyle] = useState('Post Profissional (Canva)');
   const [aspectRatio, setAspectRatio] = useState('1:1');
   const [imageModel, setImageModel] = useState('imagen-4.0-ultra-generate-001');
   const [imageSize, setImageSize] = useState('1K');
@@ -238,7 +238,7 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
         .select('url, filename, type')
         .eq('brand_id', brand.id);
 
-      const styleDescription = imageStyleDescriptions[imageStyle] || imageStyleDescriptions['Post Profissional (Canva-style)'];
+      const styleDescription = imageStyleDescriptions[imageStyle] || imageStyleDescriptions['Post Profissional (Canva)'];
 
       const generateRes = await fetch('/api/generate', {
         method: 'POST',
@@ -374,7 +374,7 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
         .select('url, filename, type')
         .eq('brand_id', brand.id);
 
-      const styleDescription = imageStyleDescriptions[imageStyle] || imageStyleDescriptions['Post Profissional (Canva-style)'];
+      const styleDescription = imageStyleDescriptions[imageStyle] || imageStyleDescriptions['Post Profissional (Canva)'];
 
       const res = await fetch('/api/generate', {
         method: 'POST',
