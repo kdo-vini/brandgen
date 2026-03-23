@@ -69,11 +69,35 @@ All new `indigo-*` Tailwind classes should be replaced with arbitrary values fro
 | Route | Purpose |
 |---|---|
 | `POST /api/scrape` | Fetches URL, extracts title/description/colors/logo via `cheerio` + `node-vibrant` |
-| `POST /api/analyze` | Receives `{ scraped }`, calls Gemini `gemini-3.1-pro-preview`, returns `GeminiAnalysis` |
-| `POST /api/generate` | Receives brand kit + post config, calls Gemini, returns `GeneratedContent`. Supports partial regeneration via `regenerateField` + `currentContent` body params. |
+| `POST /api/analyze` | Receives `{ scraped }`, calls Gemini `gemini-2.0-flash`, returns `GeminiAnalysis` |
+| `POST /api/generate` | Receives brand kit + marketer prefs + assets, runs full 4-step AI chain, returns `GeneratedContent` with strategy/copy/visual_brief/critic. Supports partial regen via `regenerateField` + `currentContent`. |
 | `POST /api/image` | Receives `{ prompt, imageModel, aspectRatio, imageSize, modelType }`, calls Imagen or Gemini image model, returns `{ imageBase64 }` |
 
 **Partial regeneration in `/api/generate`:** If `regenerateField` and `currentContent` are in the request body, the route runs a focused prompt to regenerate only that field and returns early with `{ ...currentContent, [field]: newValue }`.
+
+### AI Generation Pipeline (`serverPrompting.ts`)
+
+All AI prompt logic lives in `serverPrompting.ts` (server-side only, never imported by the frontend).
+
+**Chain order:** `buildStrategyPrompt` → `buildCopyPrompt` → `buildVisualBriefPrompt` → `buildCriticPrompt` → `buildImagePromptFromBrief`
+
+| Export | Purpose |
+|---|---|
+| `PROMPT_VERSIONS` | Version map `{ strategy, copy, visual, critic }` — bump when changing any prompt |
+| `buildStrategyPrompt()` | Chooses objective + creative angle before any copy. Injects few-shot examples. |
+| `buildCopyPrompt()` | Writes hook, caption, CTA, hashtags, imageText from strategy output |
+| `buildVisualBriefPrompt()` | Generates structured visual direction (composition, layout, productRole, avoid[]) from copy |
+| `buildCriticPrompt()` | Scores the full creative 0–10: brandFit, clarity, originality, aiSlopRisk, conversionReadiness |
+| `buildImagePromptFromBrief()` | Converts visual brief → final Imagen or Gemini image prompt string |
+| `buildRegenerationPrompt()` | Single-field focused regen (used by partial regen route) |
+| `buildAssetParts()` | Encodes selected brand assets as multimodal Gemini parts for image editing flow |
+| `normalizeProductType()` | Maps raw `product_type` → `food \| saas \| ecommerce \| service \| other` |
+
+**Few-shot injection:** `buildStrategyPrompt` calls `getFewShotExamples(productType, postType)` from `src/lib/fewShotBank.ts` and injects up to 2 matching examples into the strategy prompt context.
+
+**Marketer controls:** `src/lib/marketerControls.ts` defines `MarketerPreferences` (objective, tone, emojiUsage, ctaStrength, visualStyle, manualAngle, marketerNotes). Normalized and injected into every prompt stage.
+
+**Quality gate:** After critic runs, if `overallScore < 7` or `aiSlopRisk > 4`, UI shows a warning banner and blocks "Gerar imagem" until the user explicitly confirms.
 
 ### Frontend (`src/`)
 
@@ -96,6 +120,9 @@ All new `indigo-*` Tailwind classes should be replaced with arbitrary values fro
 | `AssetUploader.tsx` | Supabase Storage upload/delete for brand photos |
 | `PostHistory.tsx` | Collapsible list of past generated posts |
 | `Toast.tsx` | Animated toast notifications (error `#EF476F`, success `#06D6A0`) |
+| `src/lib/marketerControls.ts` | `MarketerPreferences` type + normalization helpers. Source of truth for objective/tone/emoji/CTA/style options. |
+| `src/lib/fewShotBank.ts` | `FEW_SHOT_BANK` array (15 examples across 5 verticals) + `getFewShotExamples(productType, postType)` selector. |
+| `serverPrompting.ts` | All AI prompt builders, type definitions, `PROMPT_VERSIONS`. Never imported by frontend. |
 
 ### `BrandDetail.tsx` — Generated Content Flow
 
@@ -109,9 +136,30 @@ All new `indigo-*` Tailwind classes should be replaced with arbitrary values fro
 
 | Table | Notes |
 |---|---|
-| `brands` | Core brand kit. Schema mirrors `Brand` type in `src/types.ts` |
-| `brand_assets` | Uploaded images. Storage bucket: `brand-assets` |
-| `generated_posts` | History of AI-generated posts per brand. `image_url` populated after image generation |
+| `brands` | Core brand kit. Schema mirrors `Brand` type in `src/types.ts`. Includes `prova_disponivel` + `claim_restrictions` (Brand OS). |
+| `brand_assets` | Uploaded images. Storage bucket: `brand-assets`. Types: `product_photo \| logo \| reference \| packaging \| environment` |
+| `generated_posts` | Full generation history per brand. See extended columns below. |
+
+**`generated_posts` columns** — migration in `docs/migrations/001_generated_posts_playbook_columns.sql` (run in Supabase SQL editor):
+
+| Column | Type | Notes |
+|---|---|---|
+| `hook`, `caption`, `cta`, `hashtags` | text | Core copy fields |
+| `image_text` | text | Short text to render inside the image |
+| `image_prompt`, `image_url` | text | Final image prompt + Storage URL |
+| `image_style`, `format`, `aspect_ratio`, `image_model` | text | Generation settings |
+| `objective` | text | Resolved post objective |
+| `strategy_json` | jsonb | Full `StrategyPlan` output |
+| `copy_json` | jsonb | Copy fields snapshot at save time |
+| `visual_brief_json` | jsonb | Full `VisualBrief` output |
+| `critic_json` | jsonb | Full `CreativeCritic` output |
+| `prompt_version_strategy/copy/visual/critic` | text | Version strings from `PROMPT_VERSIONS` |
+| `human_edits_json` | jsonb | `{ [field]: { original, edited, editedAt } }` — tracks user edits |
+| `regeneration_counts_json` | jsonb | `{ [field]: count }` — tracks per-field regen count |
+| `selected_asset_ids` | text[] | Asset IDs passed to image model |
+| `generation_mode` | text | `text_to_image \| asset_edit \| asset_reference` |
+
+Code uses graceful fallback: tries to save extended payload; on schema error, retries with base columns only.
 
 ## Roadmap
 
@@ -149,3 +197,55 @@ All new `indigo-*` Tailwind classes should be replaced with arbitrary values fro
 1. **Prop mutation in `BrandDetail.tsx`** — `handleRescan` directly mutates `brand.colors`, `brand.primary_color`, etc. on the prop object. Should use `onEdit(updatedBrand)` to trigger a proper React re-render.
 2. **No auth / no RLS** — All Supabase tables are globally readable/writable with the anon key. Phase 4 priority.
 3. **SPA scraping** — `/api/scrape` uses `axios` + `cheerio`; JS-rendered sites (React/Next/Vue apps) return empty HTML. Consider Puppeteer for a future improvement.
+
+
+
+## Playbook To-Do (ordered by impact)
+
+- [x] Cadeia strategy → copy → visual_brief → critic
+- [x] Prompt versioning (PROMPT_VERSIONS salvo em generated_posts)
+- [x] Controles essenciais (objetivo, tom, emoji, CTA, brief)
+- [x] imageText como campo editável no resultado
+- [x] Critic quality gate: warning quando overallScore < 7 ou aiSlopRisk > 4
+- [x] Score pills no card de crítica (Marca, Clareza, Originalidade)
+- [x] human_edits_json: tracking de edições por campo
+- [x] **Brand OS: campos prova_disponivel + claim_restrictions** — evita invenções da IA
+- [x] **Objectives completos: offer, authority, community, local_traffic, seasonal** — cobre casos de uso reais
+- [x] **Critic como gate real** — bloquear "Gerar imagem" se score < 7, exige confirmação
+- [x] Ângulo criativo manual no modo avançado (campo colapsável)
+- [x] Asset types: packaging + environment
+- [x] Few-shot bank por vertical/tipo/estilo
+- [x] Learning loop: contagem de regenerações e estilo preferido por marca
+
+## Playbook Implementation Status (`docs/criae-prompting-playbook-v1.md`)
+
+### ✅ Fase 1 — Cadeia de prompts
+- strategy → copy → visual_brief → critic em cadeia (serverPrompting.ts + server.ts)
+- JSON estruturado de cada etapa com schemas Gemini
+- Prompt versioning: `PROMPT_VERSIONS` em serverPrompting.ts, incluído no response e salvo em `generated_posts` como `prompt_version_strategy/copy/visual/critic`
+
+### ✅ Fase 2 — Controles essenciais + imageText manual
+- UI: objetivo, tom, emoji, CTA, brief extra (marketerControls.ts)
+- Ajustes avançados colapsáveis (modelo, resolução)
+- `image_text` como campo editável no painel "Seu post está pronto" (EditableField)
+- `image_text` atualiza a pré-visualização no prompt de imagem em tempo real
+
+### ✅ Fase 3 — Qualidade automática + learning loop
+- Critic quality gate: warning quando `overallScore < 7` ou `aiSlopRisk > 4`
+- Score pills (Marca, Clareza, Originalidade) no card de crítica interna
+- `human_edits_json`: tracking de edições manuais por campo (original, edited, editedAt)
+- Reset de humanEdits a cada nova geração
+- Salvo em `generated_posts` com fallback para schema antigo
+
+### ✅ Fase 4 — Few-shot bank + Learning loop avançado
+- [x] Example bank interno: 3-5 exemplos por vertical/tipo/estilo injetados nos prompts (`src/lib/fewShotBank.ts`, injetado em `buildStrategyPrompt`)
+- [x] Aprender com edições do usuário (quanto editou, quantas vezes regenerou) — `human_edits_json` + `regeneration_counts_json` salvos em `generated_posts`
+- [ ] Medir performance por tipo de saída — requer integração com API do Instagram/Meta, fora do escopo atual
+
+### ✅ Supabase schema para colunas novas
+Migration SQL em `docs/migrations/001_generated_posts_playbook_columns.sql`.
+Rodar no SQL editor do Supabase para adicionar as colunas em `generated_posts`:
+- `objective`, `image_text`, `strategy_json`, `copy_json`, `visual_brief_json`, `critic_json`
+- `selected_asset_ids`, `generation_mode`
+- `prompt_version_strategy/copy/visual/critic`
+- `human_edits_json`, `regeneration_counts_json`

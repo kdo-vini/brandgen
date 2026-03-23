@@ -6,6 +6,19 @@ export type CopyApproach =
   | "proof"
   | "provocative";
 
+export type PostObjective =
+  | "auto"
+  | "awareness"
+  | "consideration"
+  | "conversion"
+  | "retention"
+  | "launch"
+  | "offer"
+  | "authority"
+  | "community"
+  | "local_traffic"
+  | "seasonal";
+
 export type ToneOverride =
   | "brand"
   | "casual"
@@ -26,11 +39,13 @@ export type CtaIntensity = "auto" | "soft" | "medium" | "hard";
 
 export type MarketerPreferences = {
   copyApproach: CopyApproach;
+  captionStyle: CaptionStyle;
+  objective: PostObjective;
   toneOverride: ToneOverride;
   emojiUsage: EmojiUsage;
-  captionStyle: CaptionStyle;
   ctaIntensity: CtaIntensity;
   creativeNotes: string;
+  angleOverride: string;
 };
 
 type Option<T extends string> = {
@@ -42,7 +57,7 @@ type Option<T extends string> = {
 export const COPY_APPROACH_OPTIONS: Option<CopyApproach>[] = [
   {
     value: "auto",
-    label: "Automático",
+    label: "Automatico",
     hint: "A IA escolhe a estrutura mais adequada ao tipo de post.",
   },
   {
@@ -72,11 +87,44 @@ export const COPY_APPROACH_OPTIONS: Option<CopyApproach>[] = [
   },
 ];
 
+export const OBJECTIVE_OPTIONS: Option<PostObjective>[] = [
+  {
+    value: "auto",
+    label: "Automatico",
+    hint: "A Criae decide a meta mais adequada para esse tipo de post.",
+  },
+  {
+    value: "awareness",
+    label: "Atrair",
+    hint: "Abrir interesse, curiosidade e lembranca de marca.",
+  },
+  {
+    value: "consideration",
+    label: "Consideracao",
+    hint: "Explicar melhor a proposta e reduzir objecoes.",
+  },
+  {
+    value: "conversion",
+    label: "Conversao",
+    hint: "Levar para clique, compra, teste ou contato.",
+  },
+  {
+    value: "retention",
+    label: "Retencao",
+    hint: "Trazer quem ja conhece a marca de volta para a acao.",
+  },
+  { value: 'offer', label: 'Oferta', hint: 'Comunicar uma oferta, promoção ou condição especial.' },
+  { value: 'authority', label: 'Autoridade', hint: 'Posicionar a marca como referência no segmento.' },
+  { value: 'community', label: 'Comunidade', hint: 'Criar conexão, engajamento e senso de pertencimento.' },
+  { value: 'local_traffic', label: 'Tráfego local', hint: 'Levar pessoas a um endereço, evento ou PDV físico.' },
+  { value: 'seasonal', label: 'Sazonal', hint: 'Aproveitar uma data, tendência ou momento específico.' },
+];
+
 export const TONE_OVERRIDE_OPTIONS: Option<ToneOverride>[] = [
   {
     value: "brand",
     label: "Da marca",
-    hint: "Mantem a voz base da marca.",
+    hint: "Mantem a voz principal da marca.",
   },
   {
     value: "casual",
@@ -86,17 +134,17 @@ export const TONE_OVERRIDE_OPTIONS: Option<ToneOverride>[] = [
   {
     value: "premium",
     label: "Mais premium",
-    hint: "Mais polido, sofisticado e com menos exagero.",
+    hint: "Mais polido, sofisticado e enxuto.",
   },
   {
     value: "technical",
-    label: "Mais técnico",
-    hint: "Mais preciso, objetivo e orientado a informacao.",
+    label: "Mais tecnico",
+    hint: "Mais preciso, claro e orientado a informacao.",
   },
   {
     value: "sales",
     label: "Mais comercial",
-    hint: "Mais conversao, urgencia e chamada para acao.",
+    hint: "Mais orientado a conversao e acao.",
   },
 ];
 
@@ -104,29 +152,29 @@ export const EMOJI_USAGE_OPTIONS: Option<EmojiUsage>[] = [
   {
     value: "followBrand",
     label: "Seguir a marca",
-    hint: "Usa o estilo da marca como referencia, sem exagerar.",
+    hint: "Usa a marca como referencia, sem assumir exagero.",
   },
   {
     value: "none",
     label: "Sem emoji",
-    hint: "Nao usa emoji no hook, legenda ou CTA.",
+    hint: "Nao usa emoji em hook, legenda ou CTA.",
   },
   {
     value: "minimal",
     label: "Pouco emoji",
-    hint: "Usa no maximo um ou dois, so se fizer sentido.",
+    hint: "No maximo um ou dois, so quando fizer sentido.",
   },
   {
     value: "moderate",
     label: "Emoji moderado",
-    hint: "Pode usar alguns, mas sem empilhar ou infantilizar.",
+    hint: "Pode usar alguns, sem empilhar nem infantilizar.",
   },
 ];
 
 export const CAPTION_STYLE_OPTIONS: Option<CaptionStyle>[] = [
   {
     value: "auto",
-    label: "Automática",
+    label: "Automatica",
     hint: "A estrutura acompanha o objetivo da peca.",
   },
   {
@@ -154,8 +202,8 @@ export const CAPTION_STYLE_OPTIONS: Option<CaptionStyle>[] = [
 export const CTA_INTENSITY_OPTIONS: Option<CtaIntensity>[] = [
   {
     value: "auto",
-    label: "Automático",
-    hint: "A intensidade acompanha a intencao da peca.",
+    label: "Automatico",
+    hint: "A intensidade acompanha o objetivo do post.",
   },
   {
     value: "soft",
@@ -176,27 +224,43 @@ export const CTA_INTENSITY_OPTIONS: Option<CtaIntensity>[] = [
 
 export const DEFAULT_MARKETER_PREFERENCES: MarketerPreferences = {
   copyApproach: "auto",
+  captionStyle: "auto",
+  objective: "auto",
   toneOverride: "brand",
   emojiUsage: "followBrand",
-  captionStyle: "auto",
   ctaIntensity: "auto",
   creativeNotes: "",
+  angleOverride: "",
 };
 
 const copyApproachLabels: Record<CopyApproach, string> = {
-  auto: "seguir o objetivo do post",
-  direct: "direto e objetivo",
+  auto: "estrutura automatica",
+  direct: "direto",
   storytelling: "storytelling",
   educational: "educativo",
   proof: "prova social",
   provocative: "provocativo",
 };
 
+const objectiveLabels: Record<PostObjective, string> = {
+  auto: "objetivo automatico",
+  awareness: "atrair",
+  consideration: "consideracao",
+  conversion: "conversao",
+  retention: "retencao",
+  launch: "lancamento",
+  offer: "oferta",
+  authority: "autoridade",
+  community: "comunidade",
+  local_traffic: "tráfego local",
+  seasonal: "sazonal",
+};
+
 const toneOverrideLabels: Record<ToneOverride, string> = {
-  brand: "da marca",
+  brand: "voz da marca",
   casual: "mais casual",
   premium: "mais premium",
-  technical: "mais técnico",
+  technical: "mais tecnico",
   sales: "mais comercial",
 };
 
@@ -208,17 +272,17 @@ const emojiUsageLabels: Record<EmojiUsage, string> = {
 };
 
 const captionStyleLabels: Record<CaptionStyle, string> = {
-  auto: "automática",
+  auto: "estrutura automatica",
   short: "curta",
   medium: "media",
   miniStory: "mini-story",
-  list: "lista / passos",
+  list: "lista",
 };
 
 const ctaIntensityLabels: Record<CtaIntensity, string> = {
-  auto: "automático",
+  auto: "automatico",
   soft: "suave",
-  medium: "media",
+  medium: "medio",
   hard: "forte",
 };
 
@@ -229,6 +293,7 @@ export function normalizeMarketerPreferences(
     ...DEFAULT_MARKETER_PREFERENCES,
     ...preferences,
     creativeNotes: (preferences?.creativeNotes || "").trim(),
+    angleOverride: (preferences?.angleOverride || "").trim(),
   };
 }
 
@@ -239,9 +304,10 @@ export function summarizeMarketerPreferences(
 
   return [
     copyApproachLabels[normalized.copyApproach],
+    objectiveLabels[normalized.objective],
+    toneOverrideLabels[normalized.toneOverride],
     emojiUsageLabels[normalized.emojiUsage],
     `CTA ${ctaIntensityLabels[normalized.ctaIntensity]}`,
     captionStyleLabels[normalized.captionStyle],
-    toneOverrideLabels[normalized.toneOverride],
   ].join(" · ");
 }

@@ -1,15 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Loader2, Wand2, ArrowLeft, Copy, Check, Download, Palette, Image as ImageIcon, Type as TypeIcon, RefreshCw, Pencil, Package, Clock } from 'lucide-react';
+import { Loader2, Wand2, ArrowLeft, Copy, Check, Download, Palette, Image as ImageIcon, Type as TypeIcon, RefreshCw, Pencil, Package, Clock, ChevronDown, ChevronUp, Target, ShieldCheck, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import type { Brand, GeneratedContent, BrandAsset } from '../types';
 import { formatProductTypeLabel } from '../lib/brandMeta';
 import {
-  COPY_APPROACH_OPTIONS,
   CTA_INTENSITY_OPTIONS,
   DEFAULT_MARKETER_PREFERENCES,
   EMOJI_USAGE_OPTIONS,
+  OBJECTIVE_OPTIONS,
   TONE_OVERRIDE_OPTIONS,
   type MarketerPreferences,
 } from '../lib/marketerControls';
@@ -86,12 +86,41 @@ const formatAspectRatios: Record<string, string> = {
   'Capa de Destaque (1080x1920, foco central)': '9:16',
 };
 const imageModels = [
-  { id: 'imagen-4.0-ultra-generate-001', name: '⭐ Imagen 4 Ultra (Melhor qualidade)', type: 'imagen' },
-  { id: 'imagen-4.0-generate-001', name: 'Imagen 4 (Alta qualidade)', type: 'imagen' },
-  { id: 'imagen-4.0-fast-generate-001', name: 'Imagen 4 Fast (Rápido)', type: 'imagen' },
-  { id: 'gemini-3-pro-image-preview', name: 'Nano Banana Pro (Thinking)', type: 'nanoBanana' },
-  { id: 'gemini-3.1-flash-image-preview', name: 'Nano Banana 2 Flash', type: 'nanoBanana' }
+  { id: 'auto', name: 'Automatico (Recomendado)', type: 'auto' },
+  { id: 'gemini-3-pro-image-preview', name: 'Nano Banana Pro', type: 'nanoBanana' },
+  { id: 'gemini-3.1-flash-image-preview', name: 'Nano Banana Flash', type: 'nanoBanana' },
+  { id: 'imagen-4.0-ultra-generate-001', name: 'Imagen 4 Ultra', type: 'imagen' },
+  { id: 'imagen-4.0-generate-001', name: 'Imagen 4', type: 'imagen' },
+  { id: 'imagen-4.0-fast-generate-001', name: 'Imagen 4 Fast', type: 'imagen' }
 ];
+
+const modelFriendlyName: Record<string, string> = {
+  'gemini-3-pro-image-preview': 'Nano Banana Pro',
+  'gemini-3.1-flash-image-preview': 'Nano Banana Flash',
+  'imagen-4.0-ultra-generate-001': 'Imagen 4 Ultra',
+  'imagen-4.0-generate-001': 'Imagen 4',
+  'imagen-4.0-fast-generate-001': 'Imagen 4 Fast',
+};
+
+function resolveImageModel(
+  imageModelSetting: string,
+  hasAssets: boolean,
+  visualBriefRecommendation: 'imagen' | 'nanoBanana' | undefined,
+  imageStyle: string,
+): { id: string; type: 'imagen' | 'nanoBanana' } {
+  if (imageModelSetting !== 'auto') {
+    const found = imageModels.find(m => m.id === imageModelSetting);
+    return { id: imageModelSetting, type: (found?.type as 'imagen' | 'nanoBanana') || 'imagen' };
+  }
+  // Assets selecionados → edição real com Nano Banana
+  if (hasAssets) return { id: 'gemini-3-pro-image-preview', type: 'nanoBanana' };
+  // Visual brief recomendou nanoBanana
+  if (visualBriefRecommendation === 'nanoBanana') return { id: 'gemini-3-pro-image-preview', type: 'nanoBanana' };
+  // Estilos de alta fidelidade fotográfica → Imagen Ultra
+  if (/fotografico|cinemato/i.test(imageStyle)) return { id: 'imagen-4.0-ultra-generate-001', type: 'imagen' };
+  // Default: Imagen 4 balanceado
+  return { id: 'imagen-4.0-generate-001', type: 'imagen' };
+}
 const imageSizes = ["1K", "2K"];
 
 const toneLabels: Record<string, string> = {
@@ -107,10 +136,6 @@ const emojiStyleLabels: Record<string, string> = {
   heavy: 'Muito emoji',
 };
 
-function findOptionLabel<T extends string>(options: { value: T; label: string }[], value: T) {
-  return options.find(option => option.value === value)?.label || value;
-}
-
 function stripLeadingSymbol(value: string) {
   return value.replace(/^[^\p{L}\p{N}]+/u, '').trim();
 }
@@ -125,9 +150,15 @@ function formatEmojiStyleLabel(value?: string | null) {
   return emojiStyleLabels[value] || value;
 }
 
+function looksLikeSchemaError(message?: string) {
+  return /schema cache|column|Could not find/i.test(message || '');
+}
+
+type EditableGeneratedField = 'hook' | 'caption' | 'cta' | 'hashtags' | 'image_text' | 'image_prompt';
+
 type EditableFieldProps = {
   label: string;
-  fieldKey: keyof GeneratedContent;
+  fieldKey: EditableGeneratedField;
   value: string;
   isEditing: boolean;
   isRegenerating: boolean;
@@ -209,7 +240,7 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
   const [postType, setPostType] = useState(postTypes[0].id);
   const [format, setFormat] = useState('Feed quadrado (1080x1080)');
   const [imageStyle, setImageStyle] = useState('Post Profissional (Canva)');
-  const [imageModel, setImageModel] = useState('imagen-4.0-ultra-generate-001');
+  const [imageModel, setImageModel] = useState('auto');
   const [imageSize, setImageSize] = useState('1K');
   const [includeText, setIncludeText] = useState(true);
 
@@ -223,23 +254,39 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
   const [currentPostId, setCurrentPostId] = useState<string | null>(null);
   const [selectedTemplate, setSelectedTemplate] = useState(0);
   const [editedContent, setEditedContent] = useState<GeneratedContent | null>(null);
-  const [editingField, setEditingField] = useState<keyof GeneratedContent | null>(null);
-  const [regeneratingField, setRegeneratingField] = useState<keyof GeneratedContent | null>(null);
+  const [editingField, setEditingField] = useState<EditableGeneratedField | null>(null);
+  const [regeneratingField, setRegeneratingField] = useState<EditableGeneratedField | null>(null);
   const [availableAssets, setAvailableAssets] = useState<BrandAsset[]>([]);
   const [assetsLoading, setAssetsLoading] = useState(true);
   const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
   const [marketerPreferences, setMarketerPreferences] = useState<MarketerPreferences>(DEFAULT_MARKETER_PREFERENCES);
+  const [advancedControlsOpen, setAdvancedControlsOpen] = useState(false);
+  const [angleControlsOpen, setAngleControlsOpen] = useState(false);
+  const [criticGateAcknowledged, setCriticGateAcknowledged] = useState(false);
+  const [humanEdits, setHumanEdits] = useState<Record<string, { original: string; edited: string; editedAt: string }>>({});
+  const [regenerationCounts, setRegenerationCounts] = useState<Record<string, number>>({});
 
   const cardRef = useRef<HTMLDivElement>(null);
   const selectedModel = imageModels.find(model => model.id === imageModel);
   const selectedAssets = availableAssets.filter(asset => selectedAssetIds.includes(asset.id));
   const aspectRatio = formatAspectRatios[format] || '1:1';
+  const resolvedModel = resolveImageModel(
+    imageModel,
+    selectedAssets.length > 0,
+    generatedContent?.visual_brief?.modelRecommendation,
+    imageStyle,
+  );
   const marketerSummary = [
-    findOptionLabel(COPY_APPROACH_OPTIONS, marketerPreferences.copyApproach),
-    findOptionLabel(TONE_OVERRIDE_OPTIONS, marketerPreferences.toneOverride),
-    findOptionLabel(EMOJI_USAGE_OPTIONS, marketerPreferences.emojiUsage),
-    `CTA ${findOptionLabel(CTA_INTENSITY_OPTIONS, marketerPreferences.ctaIntensity).toLowerCase()}`,
+    OBJECTIVE_OPTIONS.find(option => option.value === marketerPreferences.objective)?.label || marketerPreferences.objective,
+    TONE_OVERRIDE_OPTIONS.find(option => option.value === marketerPreferences.toneOverride)?.label || marketerPreferences.toneOverride,
+    EMOJI_USAGE_OPTIONS.find(option => option.value === marketerPreferences.emojiUsage)?.label || marketerPreferences.emojiUsage,
+    `CTA ${(CTA_INTENSITY_OPTIONS.find(option => option.value === marketerPreferences.ctaIntensity)?.label || marketerPreferences.ctaIntensity).toLowerCase()}`,
   ].join(' · ');
+
+  const hasCriticWarning = !!(
+    generatedContent?.critic &&
+    (generatedContent.critic.overallScore < 7 || generatedContent.critic.aiSlopRisk > 4)
+  );
 
   const updateMarketerPreference = <K extends keyof MarketerPreferences>(key: K, value: MarketerPreferences[K]) => {
     setMarketerPreferences(prev => ({ ...prev, [key]: value }));
@@ -271,47 +318,113 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
     setMarketerPreferences(DEFAULT_MARKETER_PREFERENCES);
   }, [brand.id]);
 
-  const syncCurrentPost = async (overrides: Partial<Record<'hook' | 'caption' | 'cta' | 'hashtags' | 'image_prompt' | 'image_url', string | null>> = {}) => {
-    if (!currentPostId || !editedContent) return;
-
-    const payload = {
-      hook: editedContent.hook,
-      caption: editedContent.caption,
-      cta: editedContent.cta,
-      hashtags: editedContent.hashtags,
-      image_prompt: editablePrompt || editedContent.image_prompt,
-      ...overrides,
+  const buildGeneratedPostPayload = (
+    content: GeneratedContent,
+    overrides: Partial<Record<'hook' | 'caption' | 'cta' | 'hashtags' | 'image_text' | 'image_prompt' | 'image_url', string | null>> = {},
+  ) => {
+    const imagePromptValue = (overrides.image_prompt ?? editablePrompt ?? content.image_prompt ?? '').trim();
+    const basePayload = {
+      user_id: user.id,
+      brand_id: brand.id,
+      post_type: postType,
+      format,
+      image_style: imageStyle,
+      aspect_ratio: aspectRatio,
+      image_model: imageModel,
+      image_size: imageSize,
+      hook: (overrides.hook ?? content.hook ?? '').trim(),
+      caption: (overrides.caption ?? content.caption ?? '').trim(),
+      cta: (overrides.cta ?? content.cta ?? '').trim(),
+      hashtags: (overrides.hashtags ?? content.hashtags ?? '').trim(),
+      image_prompt: imagePromptValue,
+      ...(overrides.image_url !== undefined ? { image_url: overrides.image_url } : {}),
     };
 
-    const { error } = await supabase
+    const extendedPayload = {
+      ...basePayload,
+      objective: content.strategy?.objective || marketerPreferences.objective || null,
+      image_text: overrides.image_text !== undefined ? overrides.image_text : (content.image_text || null),
+      strategy_json: content.strategy || null,
+      copy_json: {
+        hook: basePayload.hook,
+        caption: basePayload.caption,
+        cta: basePayload.cta,
+        hashtags: basePayload.hashtags,
+        image_text: overrides.image_text !== undefined ? overrides.image_text : (content.image_text || null),
+      },
+      visual_brief_json: content.visual_brief || null,
+      critic_json: content.critic || null,
+      selected_asset_ids: selectedAssetIds,
+      generation_mode: selectedAssets.length > 0
+        ? (selectedModel?.type === 'nanoBanana' ? 'asset_edit' : 'asset_reference')
+        : 'text_to_image',
+      prompt_version_strategy: content.prompt_versions?.strategy || null,
+      prompt_version_copy: content.prompt_versions?.copy || null,
+      prompt_version_visual: content.prompt_versions?.visual || null,
+      prompt_version_critic: content.prompt_versions?.critic || null,
+      human_edits_json: Object.keys(humanEdits).length > 0 ? humanEdits : null,
+      regeneration_counts_json: Object.keys(regenerationCounts).length > 0 ? regenerationCounts : null,
+    };
+
+    return { basePayload, extendedPayload };
+  };
+
+  const syncCurrentPost = async (
+    overrides: Partial<Record<'hook' | 'caption' | 'cta' | 'hashtags' | 'image_text' | 'image_prompt' | 'image_url', string | null>> = {},
+  ) => {
+    if (!currentPostId || !editedContent) return;
+
+    const { basePayload, extendedPayload } = buildGeneratedPostPayload(editedContent, overrides);
+    let errorMessage = '';
+
+    const { error: extendedError } = await supabase
       .from('generated_posts')
-      .update(payload)
+      .update(extendedPayload)
       .eq('id', currentPostId);
 
-    if (error) {
-      throw error;
+    if (!extendedError) return;
+
+    errorMessage = extendedError.message || '';
+    if (!looksLikeSchemaError(errorMessage)) {
+      throw extendedError;
+    }
+
+    const { error: fallbackError } = await supabase
+      .from('generated_posts')
+      .update(basePayload)
+      .eq('id', currentPostId);
+
+    if (fallbackError) {
+      throw fallbackError;
     }
   };
 
-  const saveFieldToHistory = (field: keyof GeneratedContent, value: string) => {
+  const saveFieldToHistory = (field: EditableGeneratedField, value: string) => {
+    const originalValue = (generatedContent?.[field as keyof GeneratedContent] as string) || '';
+    if (value !== originalValue) {
+      setHumanEdits(prev => ({
+        ...prev,
+        [field]: { original: originalValue, edited: value, editedAt: new Date().toISOString() },
+      }));
+    }
+
     setEditedContent(prev => {
       if (!prev) return prev;
-
-      const next = { ...prev, [field]: value };
-      if (currentPostId) {
-        void supabase
-          .from('generated_posts')
-          .update({
-            hook: field === 'hook' ? value : next.hook,
-            caption: field === 'caption' ? value : next.caption,
-            cta: field === 'cta' ? value : next.cta,
-            hashtags: field === 'hashtags' ? value : next.hashtags,
-            image_prompt: field === 'image_prompt' ? value : editablePrompt || next.image_prompt,
-          })
-          .eq('id', currentPostId);
-      }
-      return next;
+      return { ...prev, [field]: value };
     });
+
+    if (currentPostId) {
+      void syncCurrentPost({
+        hook: field === 'hook' ? value : null,
+        caption: field === 'caption' ? value : null,
+        cta: field === 'cta' ? value : null,
+        hashtags: field === 'hashtags' ? value : null,
+        image_text: field === 'image_text' ? value : null,
+        image_prompt: field === 'image_prompt' ? value : null,
+      }).catch(() => {
+        onError?.('Atualizei na tela, mas nao consegui salvar no historico.');
+      });
+    }
   };
 
   const toggleAssetSelection = (assetId: string) => {
@@ -358,11 +471,18 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
         })
         .eq('id', brand.id);
 
-      // Update brand in parent
-      brand.colors = scraped.colors;
-      brand.primary_color = scraped.primary_color;
-      brand.secondary_color = scraped.secondary_color;
-      brand.logo_url = scraped.logo_url;
+      onEdit({
+        ...brand,
+        colors: scraped.colors,
+        primary_color: scraped.primary_color,
+        secondary_color: scraped.secondary_color,
+        logo_url: scraped.logo_url,
+        description: scraped.description,
+        headlines: scraped.headlines,
+        body_text: scraped.body_text,
+        raw_scan_data: scraped,
+        updated_at: new Date().toISOString(),
+      });
 
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Esse site não abriu pra gente 😅 Tenta de novo?';
@@ -376,6 +496,9 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
     setIsGenerating(true);
     setGeneratedImageUrl(null);
     setCurrentPostId(null);
+    setHumanEdits({});
+    setRegenerationCounts({});
+    setCriticGateAcknowledged(false);
 
     try {
       const generateRes = await fetch('/api/generate', {
@@ -384,11 +507,10 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
         body: JSON.stringify({
           brand,
           postType,
-          postVisualHint: postTypes.find(p => p.id === postType)?.visualHint || '',
           format,
           imageStyle,
           includeText,
-          imageModelType: selectedModel?.type || 'imagen',
+          imageModelType: selectedAssets.length > 0 ? 'nanoBanana' : 'imagen',
           marketerPreferences,
           selectedAssets: selectedAssets.map(({ id, url, filename, type }) => ({ id, url, filename, type })),
         })
@@ -404,30 +526,38 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
       setEditedContent(content);
       setEditablePrompt(content.image_prompt);
 
-      // Save to generated_posts and capture the row ID
-      const { data: insertedPost, error: insertError } = await supabase
+      const { basePayload, extendedPayload } = buildGeneratedPostPayload(content);
+      let insertedPost: { id: string } | null = null;
+
+      const { data: extendedInsert, error: extendedInsertError } = await supabase
         .from('generated_posts')
-        .insert({
-          user_id: user.id,
-          brand_id: brand.id,
-          post_type: postType,
-          format,
-          image_style: imageStyle,
-          aspect_ratio: aspectRatio,
-          image_model: imageModel,
-          image_size: imageSize,
-          hook: content.hook,
-          caption: content.caption,
-          cta: content.cta,
-          hashtags: content.hashtags,
-          image_prompt: content.image_prompt,
-        })
+        .insert(extendedPayload)
         .select('id')
         .single();
 
-      if (insertError) onError?.('O post saiu, mas nao consegui salvar no historico.');
-      else if (insertedPost?.id) setCurrentPostId(insertedPost.id);
-      else onError?.('O post saiu, mas nao consegui salvar no historico.');
+      if (!extendedInsertError && extendedInsert?.id) {
+        insertedPost = extendedInsert as { id: string };
+      } else if (looksLikeSchemaError(extendedInsertError?.message)) {
+        const { data: fallbackInsert, error: fallbackInsertError } = await supabase
+          .from('generated_posts')
+          .insert(basePayload)
+          .select('id')
+          .single();
+
+        if (fallbackInsertError) {
+          onError?.('O post saiu, mas nao consegui salvar no historico.');
+        } else if (fallbackInsert?.id) {
+          insertedPost = fallbackInsert as { id: string };
+        }
+      } else if (extendedInsertError) {
+        onError?.('O post saiu, mas nao consegui salvar no historico.');
+      }
+
+      if (insertedPost?.id) {
+        setCurrentPostId(insertedPost.id);
+      } else {
+        onError?.('O post saiu, mas nao consegui salvar no historico.');
+      }
 
       onSuccess?.('Post criado. Agora voce pode revisar e copiar.');
 
@@ -445,10 +575,6 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
     setIsGeneratingImage(true);
 
     try {
-      if (selectedAssets.length > 0 && selectedModel?.type === 'imagen') {
-        throw new Error('Pra usar foto real como base, escolhe um modelo Nano Banana.');
-      }
-
       await syncCurrentPost();
 
       const imageRes = await fetch('/api/image', {
@@ -456,10 +582,10 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           prompt: editablePrompt,
-          imageModel,
+          imageModel: resolvedModel.id,
           aspectRatio,
           imageSize,
-          modelType: selectedModel?.type || 'imagen',
+          modelType: resolvedModel.type,
           referenceImages: selectedAssets.map(({ id, url, filename, type }) => ({ id, url, filename, type })),
         })
       });
@@ -508,7 +634,7 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
     }
   };
 
-  const handleRegenerateField = async (field: keyof GeneratedContent) => {
+  const handleRegenerateField = async (field: EditableGeneratedField) => {
     if (!editedContent) return;
     setRegeneratingField(field);
     try {
@@ -521,7 +647,7 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
           format,
           imageStyle,
           includeText,
-          imageModelType: selectedModel?.type || 'imagen',
+          imageModelType: selectedAssets.length > 0 ? 'nanoBanana' : 'imagen',
           marketerPreferences,
           selectedAssets: selectedAssets.map(({ id, url, filename, type }) => ({ id, url, filename, type })),
           regenerateField: field,
@@ -537,24 +663,35 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
       const newContent: GeneratedContent = await res.json();
       const nextContent = { ...editedContent, [field]: newContent[field] };
       setEditedContent(nextContent);
+      setRegenerationCounts(prev => ({ ...prev, [field]: (prev[field] || 0) + 1 }));
       if (field === 'image_prompt') setEditablePrompt(newContent[field]);
       if (currentPostId) {
-        await supabase
+        const imagePromptOverride = field === 'image_prompt'
+          ? newContent[field]
+          : editablePrompt || nextContent.image_prompt;
+        const { basePayload, extendedPayload } = buildGeneratedPostPayload(nextContent, {
+          image_prompt: imagePromptOverride,
+        });
+
+        const { error: extendedError } = await supabase
           .from('generated_posts')
-          .update({
-            hook: nextContent.hook,
-            caption: nextContent.caption,
-            cta: nextContent.cta,
-            hashtags: nextContent.hashtags,
-            image_prompt: field === 'image_prompt' ? newContent[field] : editablePrompt || nextContent.image_prompt,
-          })
+          .update(extendedPayload)
           .eq('id', currentPostId);
+
+        if (extendedError && looksLikeSchemaError(extendedError.message)) {
+          await supabase
+            .from('generated_posts')
+            .update(basePayload)
+            .eq('id', currentPostId);
+        } else if (extendedError) {
+          throw extendedError;
+        }
       }
 
-      const fieldNames: Record<keyof GeneratedContent, string> = {
-        hook: 'Hook', caption: 'Legenda', cta: 'CTA', hashtags: 'Hashtags', image_prompt: 'Prompt'
+      const fieldNames: Record<EditableGeneratedField, string> = {
+        hook: 'Hook', caption: 'Legenda', cta: 'CTA', hashtags: 'Hashtags', image_text: 'Texto da arte', image_prompt: 'Prompt'
       };
-      onSuccess?.(`${fieldNames[field]} refeito! 🔄`);
+      onSuccess?.(`${fieldNames[field]} refeito.`);
     } catch (err: unknown) {
       onError?.(err instanceof Error ? err.message : 'Nao consegui refazer esse campo.');
     } finally {
@@ -566,6 +703,56 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
     navigator.clipboard.writeText(text);
     setCopiedField(field);
     setTimeout(() => setCopiedField(null), 2000);
+  };
+
+  const markCopied = (field: string) => {
+    setCopiedField(field);
+    setTimeout(() => setCopiedField(null), 2000);
+  };
+
+  const buildDownloadName = (suffix: string) => {
+    const safeBrandName = brand.name
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+
+    return `${safeBrandName || 'criae'}-${suffix}`;
+  };
+
+  const downloadDataUrl = (dataUrl: string, fileName: string) => {
+    const link = document.createElement('a');
+    link.href = dataUrl;
+    link.download = fileName;
+    link.click();
+  };
+
+  const handleDownloadGeneratedImage = () => {
+    if (!generatedImageUrl) return;
+    downloadDataUrl(generatedImageUrl, buildDownloadName('imagem-ai.png'));
+  };
+
+  const handleCopyGeneratedImage = async () => {
+    if (!generatedImageUrl) return;
+
+    try {
+      const response = await fetch(generatedImageUrl);
+      const blob = await response.blob();
+
+      if (navigator.clipboard?.write && typeof ClipboardItem !== 'undefined') {
+        await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+        markCopied('generated-image');
+        onSuccess?.('Imagem copiada.');
+        return;
+      }
+
+      await navigator.clipboard.writeText(generatedImageUrl);
+      markCopied('generated-image');
+      onSuccess?.('Imagem copiada como link local.');
+    } catch {
+      onError?.('Nao consegui copiar a imagem.');
+    }
   };
 
   const downloadCard = () => {
@@ -737,25 +924,21 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
                 </select>
               </div>
 
-              <div className="space-y-4 rounded-xl border border-neutral-200 bg-[#FCFAF8] p-4">
+              <div className="space-y-4 rounded-2xl border border-neutral-200 bg-[#FCFAF8] p-4">
                 <div className="space-y-1">
-                  <label className="block text-sm font-medium text-neutral-800">Direcao criativa</label>
-                  <p className="text-xs text-neutral-500">Voce escolhe a direcao do post. A legenda acompanha a abordagem automaticamente.</p>
-                </div>
-
-                <div className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-500">
-                  Base da marca: <span className="font-medium text-neutral-700">{formatToneLabel(brand.tone)}</span> / emoji <span className="font-medium text-neutral-700">{formatEmojiStyleLabel(brand.emoji_style)}</span>
+                  <label className="block text-sm font-medium text-neutral-800">Direcao editorial</label>
+                  <p className="text-xs text-neutral-500">A Criae planeja a estrategia antes de escrever. Aqui voce so ajusta o que realmente muda a peca.</p>
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
-                    <label className="block text-xs font-medium text-neutral-600 mb-1">Abordagem</label>
+                    <label className="block text-xs font-medium text-neutral-600 mb-1">Objetivo</label>
                     <select
-                      value={marketerPreferences.copyApproach}
-                      onChange={(e) => updateMarketerPreference('copyApproach', e.target.value as MarketerPreferences['copyApproach'])}
+                      value={marketerPreferences.objective}
+                      onChange={(e) => updateMarketerPreference('objective', e.target.value as MarketerPreferences['objective'])}
                       className="block w-full rounded-lg border border-neutral-300 py-2 pl-3 pr-10 text-sm focus:border-[#FF6B35] focus:outline-none focus:ring-[#FF6B35]"
                     >
-                      {COPY_APPROACH_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                      {OBJECTIVE_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
                     </select>
                   </div>
 
@@ -769,7 +952,9 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
                       {TONE_OVERRIDE_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
                     </select>
                   </div>
+                </div>
 
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
                     <label className="block text-xs font-medium text-neutral-600 mb-1">Emoji</label>
                     <select
@@ -794,44 +979,62 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-neutral-600 mb-1">Observacoes do marketeiro</label>
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">Brief extra</label>
                   <textarea
                     value={marketerPreferences.creativeNotes}
                     onChange={(e) => updateMarketerPreference('creativeNotes', e.target.value)}
                     rows={3}
                     className="block w-full rounded-lg border border-neutral-300 p-3 text-sm text-neutral-700 focus:border-[#FF6B35] focus:outline-none focus:ring-[#FF6B35]"
-                    placeholder="Ex: sem cara de IA, sem desconto inventado, foco em hamburgueria premium."
+                    placeholder="Ex: sem cara de IA, sem desconto inventado, foco em decisor de SaaS premium."
                   />
                 </div>
 
+                <div className="rounded-lg border border-neutral-200 bg-[#FCFAF8] px-3 py-2">
+                  <button
+                    type="button"
+                    onClick={() => setAngleControlsOpen(prev => !prev)}
+                    className="flex w-full items-center justify-between text-xs font-medium text-neutral-700"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      Angulo criativo manual
+                      {marketerPreferences.angleOverride && <span className="h-1.5 w-1.5 rounded-full bg-[#FF6B35]" />}
+                    </span>
+                    {angleControlsOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </button>
+                  {angleControlsOpen && (
+                    <div className="mt-3 space-y-2">
+                      <p className="text-[11px] text-neutral-400">Forca a IA a usar esse angulo especifico no copy e na imagem. Deixa em branco pra deixar a IA decidir.</p>
+                      <textarea
+                        value={marketerPreferences.angleOverride}
+                        onChange={(e) => updateMarketerPreference('angleOverride', e.target.value)}
+                        rows={2}
+                        className="block w-full rounded-lg border border-neutral-300 p-2.5 text-sm text-neutral-700 focus:border-[#FF6B35] focus:outline-none focus:ring-[#FF6B35]"
+                        placeholder="Ex: contraste entre o antes e o depois usando o proprio produto como prova"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-xl border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-500">
+                  Base da marca: <span className="font-medium text-neutral-700">{formatToneLabel(brand.tone)}</span> / emoji <span className="font-medium text-neutral-700">{formatEmojiStyleLabel(brand.emoji_style)}</span>
+                </div>
+
                 <p className="text-xs text-neutral-500">
-                  Resumo: <span className="font-medium text-neutral-700">{marketerSummary}</span>
+                  Direcao atual: <span className="font-medium text-neutral-700">{marketerSummary}</span>
                 </p>
               </div>
 
-              <div className="space-y-4 rounded-xl border border-neutral-200 bg-white p-4">
+              <div className="space-y-4 rounded-2xl border border-neutral-200 bg-white p-4">
                 <div className="space-y-1">
                   <label className="block text-sm font-medium text-neutral-800">Geracao de imagem</label>
                   <p className="text-xs text-neutral-500">O formato ja define a proporcao automaticamente.</p>
                 </div>
 
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div className="sm:col-span-2">
-                    <label className="mb-1 block text-xs font-medium text-neutral-600">Modelo de IA</label>
-                    <select value={imageModel} onChange={(e) => setImageModel(e.target.value)} className="block w-full rounded-lg border border-neutral-300 py-2 pl-3 pr-10 text-sm focus:border-[#FF6B35] focus:outline-none focus:ring-[#FF6B35]">
-                      {imageModels.map(m => <option key={m.id} value={m.id}>{stripLeadingSymbol(m.name)}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-neutral-600">Resolucao</label>
-                    <select value={imageSize} onChange={(e) => setImageSize(e.target.value)} className="block w-full rounded-lg border border-neutral-300 py-2 pl-3 pr-10 text-sm focus:border-[#FF6B35] focus:outline-none focus:ring-[#FF6B35]">
-                      {imageSizes.map(sz => <option key={sz} value={sz}>{sz}</option>)}
-                    </select>
-                  </div>
+                <div className="grid grid-cols-1 gap-4">
                   <div className="flex items-center justify-between rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2">
                     <div>
                       <label className="block text-xs font-medium text-neutral-700">Texto na imagem</label>
-                      <p className="text-xs text-neutral-500">Usa o hook como headline visual.</p>
+                      <p className="text-xs text-neutral-500">A Criae tenta renderizar o texto aprovado na arte final.</p>
                     </div>
                     <button
                       type="button"
@@ -840,6 +1043,36 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
                     >
                       <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${includeText ? 'translate-x-5' : 'translate-x-0'}`} />
                     </button>
+                  </div>
+
+                  <div className="rounded-lg border border-neutral-200 bg-[#FCFAF8] px-3 py-2">
+                    <button
+                      type="button"
+                      onClick={() => setAdvancedControlsOpen(prev => !prev)}
+                      className="flex w-full items-center justify-between text-xs font-medium text-neutral-700"
+                    >
+                      <span>Ajustes avancados de imagem</span>
+                      {advancedControlsOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                    </button>
+                    {advancedControlsOpen && (
+                      <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <div className="sm:col-span-2">
+                          <label className="mb-1 block text-xs font-medium text-neutral-600">Modelo de imagem</label>
+                          <select value={imageModel} onChange={(e) => setImageModel(e.target.value)} className="block w-full rounded-lg border border-neutral-300 py-2 pl-3 pr-10 text-sm focus:border-[#FF6B35] focus:outline-none focus:ring-[#FF6B35]">
+                            {imageModels.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                          </select>
+                          {imageModel !== 'auto' && (
+                            <p className="mt-1 text-[11px] text-neutral-400">Em modo manual.</p>
+                          )}
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs font-medium text-neutral-600">Resolucao</label>
+                          <select value={imageSize} onChange={(e) => setImageSize(e.target.value)} className="block w-full rounded-lg border border-neutral-300 py-2 pl-3 pr-10 text-sm focus:border-[#FF6B35] focus:outline-none focus:ring-[#FF6B35]">
+                            {imageSizes.map(sz => <option key={sz} value={sz}>{sz}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -882,8 +1115,11 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
                   <p className="text-xs text-neutral-400">Sem assets ainda. Sobe umas fotos na aba Assets pra deixar a IA mais alinhada com o produto real.</p>
                 )}
 
-                {selectedAssets.length > 0 && selectedModel?.type === 'imagen' && (
-                  <p className="text-xs text-[#EF476F]">Com assets selecionados, a edicao real da imagem so funciona nos modelos Nano Banana.</p>
+                {imageModel === 'auto' && (
+                  <p className="text-xs text-neutral-400">
+                    Modelo selecionado automaticamente: <span className="font-medium text-neutral-600">{modelFriendlyName[resolvedModel.id] || resolvedModel.id}</span>
+                    {selectedAssets.length > 0 && ' (edição com assets)'}
+                  </p>
                 )}
               </div>
 
@@ -904,6 +1140,101 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
 
           {/* Results */}
           <div className="lg:col-span-7 space-y-6">
+            {generatedContent?.strategy && (
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#FFF1EB] text-[#FF6B35]">
+                        <Target className="h-4 w-4" />
+                      </div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-400">Plano criativo</p>
+                      <h3 className="text-base font-semibold text-neutral-900 font-display">A Criae decidiu o angulo antes da copy</h3>
+                    </div>
+                    <span className="rounded-full bg-[#FFF1EB] px-3 py-1 text-xs font-medium text-[#FF6B35]">
+                      {generatedContent.strategy.objective}
+                    </span>
+                  </div>
+                  <p className="text-sm font-medium text-neutral-900">{generatedContent.strategy.angle}</p>
+                  <p className="mt-2 text-sm text-neutral-600">{generatedContent.strategy.rationale}</p>
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-neutral-500">
+                    <div className="rounded-xl bg-neutral-50 px-3 py-2">
+                      <span className="block text-[11px] uppercase tracking-[0.12em] text-neutral-400">Copy</span>
+                      <span className="font-medium text-neutral-700">{generatedContent.strategy.copyApproach}</span>
+                    </div>
+                    <div className="rounded-xl bg-neutral-50 px-3 py-2">
+                      <span className="block text-[11px] uppercase tracking-[0.12em] text-neutral-400">Legenda</span>
+                      <span className="font-medium text-neutral-700">{generatedContent.strategy.captionBlueprint}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {generatedContent.critic && (
+                  <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700">
+                          <ShieldCheck className="h-4 w-4" />
+                        </div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-400">Critica interna</p>
+                        <h3 className="text-base font-semibold text-neutral-900 font-display">Checagem de qualidade antes da arte</h3>
+                      </div>
+                      <span className={`rounded-full px-3 py-1 text-xs font-medium ${generatedContent.critic.overallScore >= 8 ? 'bg-emerald-50 text-emerald-700' : generatedContent.critic.overallScore >= 6 ? 'bg-amber-50 text-amber-700' : 'bg-rose-50 text-rose-700'}`}>
+                        {generatedContent.critic.overallScore.toFixed(1)}/10
+                      </span>
+                    </div>
+                    <p className="text-sm text-neutral-700">{generatedContent.critic.verdict}</p>
+                    {generatedContent.critic.recommendedFix && (
+                      <p className="mt-2 text-sm text-neutral-500">
+                        Ajuste mais importante: <span className="font-medium text-neutral-700">{generatedContent.critic.recommendedFix}</span>
+                      </p>
+                    )}
+                    {(generatedContent.critic.overallScore < 7 || generatedContent.critic.aiSlopRisk > 4) && (
+                      <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 flex items-start gap-2">
+                        <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 flex-shrink-0" />
+                        <div className="space-y-1">
+                          <p className="text-xs font-semibold text-amber-800">Revisa antes de gerar a imagem</p>
+                          {generatedContent.critic.overallScore < 7 && (
+                            <p className="text-xs text-amber-700">Score geral abaixo de 7 ({generatedContent.critic.overallScore.toFixed(1)}/10). Edite ou refaca algum campo.</p>
+                          )}
+                          {generatedContent.critic.aiSlopRisk > 4 && (
+                            <p className="text-xs text-amber-700">Risco alto de cliche de IA (aiSlopRisk {generatedContent.critic.aiSlopRisk}/10). Use "refazer" no hook ou legenda.</p>
+                          )}
+                          {!criticGateAcknowledged && (
+                            <button
+                              type="button"
+                              onClick={() => setCriticGateAcknowledged(true)}
+                              className="mt-1.5 text-xs font-medium text-amber-800 underline underline-offset-2 hover:text-amber-900"
+                            >
+                              Entendi, gerar mesmo assim
+                            </button>
+                          )}
+                          {criticGateAcknowledged && (
+                            <p className="mt-1 text-xs font-medium text-emerald-700">Ok, pode gerar a imagem la embaixo.</p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+                      {([
+                        { key: 'brandFit' as const, label: 'Marca' },
+                        { key: 'clarity' as const, label: 'Clareza' },
+                        { key: 'originality' as const, label: 'Originalidade' },
+                      ]).map(({ key, label }) => {
+                        const score = generatedContent.critic![key];
+                        return (
+                          <div key={key} className="rounded-lg bg-neutral-50 px-2 py-1.5 text-center">
+                            <span className="block text-[10px] uppercase tracking-wide text-neutral-400">{label}</span>
+                            <span className={`font-semibold ${score >= 7 ? 'text-emerald-600' : score >= 5 ? 'text-amber-600' : 'text-rose-600'}`}>{score}/10</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             <AnimatePresence>
               {generatedContent && (
                 <motion.div
@@ -976,6 +1307,21 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
                         className="text-neutral-500"
                       />
                     </motion.div>
+                    {editedContent?.image_text !== undefined && (
+                      <motion.div initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.45 }}>
+                        <EditableField
+                          label="Texto na arte"
+                          fieldKey="image_text"
+                          value={editedContent?.image_text || ''}
+                          isEditing={editingField === 'image_text'}
+                          isRegenerating={regeneratingField === 'image_text'}
+                          onEdit={() => setEditingField('image_text')}
+                          onSave={val => { saveFieldToHistory('image_text', val); setEditingField(null); }}
+                          onRegenerate={() => handleRegenerateField('image_text')}
+                          className="font-medium text-neutral-700"
+                        />
+                      </motion.div>
+                    )}
                   </div>
                   <div className="px-6 pb-4">
                     <p className="text-xs text-neutral-400">Clique em qualquer texto para editar ou use "refazer" para gerar so aquele campo de novo.</p>
@@ -1006,6 +1352,12 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
                     </button>
                   </div>
                   <div className="p-6">
+                    {editedContent?.image_text && (
+                      <div className="mb-4 rounded-xl border border-neutral-200 bg-[#FCFAF8] px-3 py-2">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-400">Texto aprovado na arte</p>
+                        <p className="mt-1 text-sm font-medium text-neutral-800">{editedContent.image_text}</p>
+                      </div>
+                    )}
                     <textarea
                       value={editablePrompt}
                       onChange={(e) => setEditablePrompt(e.target.value)}
@@ -1024,26 +1376,19 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
                         <RefreshCw className="h-3.5 w-3.5 mr-1.5" /> Restaurar original
                       </button>
                     </div>
-                    <div className="mt-3 flex flex-col sm:flex-row gap-4">
+                    <div className="mt-3">
                       <motion.button
                         whileTap={{ scale: 0.97 }}
                         onClick={handleGenerateImage}
-                        disabled={isGeneratingImage || !editablePrompt.trim() || (selectedAssets.length > 0 && selectedModel?.type === 'imagen')}
-                      className="flex-1 flex justify-center items-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-[#FF6B35] hover:bg-[#E55A28] disabled:opacity-50 transition-colors"
-                    >
-                      {isGeneratingImage ? (
+                        disabled={isGeneratingImage || !editablePrompt.trim() || (hasCriticWarning && !criticGateAcknowledged)}
+                        className={`flex w-full justify-center items-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white transition-colors disabled:opacity-50 ${hasCriticWarning && !criticGateAcknowledged ? 'bg-neutral-400 cursor-not-allowed' : 'bg-[#FF6B35] hover:bg-[#E55A28]'}`}
+                      >
+                        {isGeneratingImage ? (
                           <><Loader2 className="animate-spin -ml-1 mr-2 h-4 w-4" /> Gerando imagem...</>
                         ) : (
                           <><ImageIcon className="-ml-1 mr-2 h-4 w-4" /> Gerar imagem</>
                         )}
                       </motion.button>
-                      <button
-                        onClick={downloadCard}
-                        disabled={!generatedContent}
-                        className="flex-1 flex justify-center items-center py-2.5 px-4 border border-neutral-300 rounded-lg shadow-sm text-sm font-medium text-neutral-700 bg-white hover:bg-neutral-50 disabled:opacity-40 transition-colors"
-                      >
-                        <Download className="-ml-1 mr-2 h-4 w-4" /> Baixar card
-                      </button>
                     </div>
                   </div>
                 </motion.div>
@@ -1054,7 +1399,15 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
             <div className={`grid gap-6 ${generatedContent && generatedImageUrl ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
               {generatedContent && (
                 <div>
-                  <h3 className="text-sm font-medium text-neutral-700 mb-2">Card tipográfico</h3>
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <h3 className="text-sm font-medium text-neutral-700">Card tipográfico</h3>
+                    <button
+                      onClick={downloadCard}
+                      className="inline-flex items-center rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 transition-colors hover:bg-neutral-50"
+                    >
+                      <Download className="mr-1.5 h-3.5 w-3.5" /> Baixar
+                    </button>
+                  </div>
 
                   {/* Template selector */}
                   <div className="flex gap-2 mb-3" role="group" aria-label="Escolher template do card">
@@ -1095,7 +1448,28 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
 
               {generatedImageUrl && (
                 <div>
-                  <h3 className="text-sm font-medium text-neutral-700 mb-2">Imagem gerada</h3>
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <h3 className="text-sm font-medium text-neutral-700">Imagem gerada</h3>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => { void handleCopyGeneratedImage(); }}
+                        className="inline-flex items-center rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 transition-colors hover:bg-neutral-50"
+                      >
+                        {copiedField === 'generated-image' ? (
+                          <Check className="mr-1.5 h-3.5 w-3.5 text-emerald-500" />
+                        ) : (
+                          <Copy className="mr-1.5 h-3.5 w-3.5" />
+                        )}
+                        Copiar
+                      </button>
+                      <button
+                        onClick={handleDownloadGeneratedImage}
+                        className="inline-flex items-center rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 transition-colors hover:bg-neutral-50"
+                      >
+                        <Download className="mr-1.5 h-3.5 w-3.5" /> Baixar
+                      </button>
+                    </div>
+                  </div>
                   <div className="border border-neutral-200 rounded-lg overflow-hidden bg-neutral-100 flex items-center justify-center p-4">
                     <img src={generatedImageUrl} alt="Imagem gerada por IA" className="max-w-full h-auto shadow-md rounded" style={{ maxHeight: '400px', objectFit: 'contain' }} />
                   </div>

@@ -11,22 +11,133 @@ import path from "path";
 import { GoogleGenAI, Modality, Type } from "@google/genai";
 import {
   IMAGEN_NEGATIVE_PROMPT,
-  appendPromptGuardrails,
   buildAssetParts,
-  buildContentPrompt,
+  buildCopyPrompt,
+  buildCriticPrompt,
+  buildImagePromptFromBrief,
   buildRegenerationPrompt,
+  buildStrategyPrompt,
+  buildVisualBriefPrompt,
   normalizeProductType,
+  PROMPT_VERSIONS,
   type AssetReference,
+  type CreativeCritic,
   type ImageModelType,
+  type StrategyPlan,
+  type VisualBrief,
 } from "./serverPrompting";
 import type { MarketerPreferences } from "./src/lib/marketerControls";
 
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: "2mb" }));
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
+
+// ─── Color helpers ───────────────────────────────────────────────────────────
+
+function hexToRgb(hex: string): [number, number, number] {
+  const clean = hex.replace("#", "");
+  return [
+    parseInt(clean.slice(0, 2), 16),
+    parseInt(clean.slice(2, 4), 16),
+    parseInt(clean.slice(4, 6), 16),
+  ];
+}
+
+function colorDistance(a: string, b: string): number {
+  const [r1, g1, b1] = hexToRgb(a);
+  const [r2, g2, b2] = hexToRgb(b);
+  return Math.sqrt((r1 - r2) ** 2 + (g1 - g2) ** 2 + (b1 - b2) ** 2);
+}
+
+function deduplicateColors(colors: string[], threshold = 40): string[] {
+  const result: string[] = [];
+  for (const color of colors) {
+    if (!result.some((r) => colorDistance(r, color) < threshold)) {
+      result.push(color);
+    }
+  }
+  return result;
+}
+
+function extractCssHexColors(html: string, limit = 60): string[] {
+  const hexSet = new Set<string>();
+  const matches = html.match(/#[0-9a-fA-F]{6}(?![0-9a-fA-F])/g) || [];
+  for (const m of matches) {
+    hexSet.add(m.toUpperCase());
+    if (hexSet.size >= limit) break;
+  }
+  return Array.from(hexSet);
+}
+
+async function extractColorsFromImageBuffer(
+  buffer: Buffer,
+): Promise<{ colors: string[]; primaryColor: string; secondaryColor: string }> {
+  const vibrant = new Vibrant(buffer);
+  const palette = await vibrant.getPalette();
+
+  const swatches = [
+    palette.Vibrant,
+    palette.DarkVibrant,
+    palette.LightVibrant,
+    palette.Muted,
+    palette.DarkMuted,
+    palette.LightMuted,
+  ]
+    .filter(Boolean)
+    .map((s) => s!.hex);
+
+  const primaryColor =
+    palette.Vibrant?.hex || palette.Muted?.hex || swatches[0] || "#000000";
+  const secondaryColor =
+    palette.Muted?.hex || palette.LightVibrant?.hex || swatches[1] || "#ffffff";
+
+  return { colors: swatches, primaryColor, secondaryColor };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 function toSafeJson(text?: string | null) {
-  return JSON.parse(text || "{}");
+  const raw = (text || "").trim();
+
+  if (!raw) {
+    return {};
+  }
+
+  const withoutFence = raw
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+
+  return JSON.parse(withoutFence || "{}");
+}
+
+function buildMultimodalContents(prompt: string, assetParts: any[]) {
+  return assetParts.length ? [...assetParts, prompt] : prompt;
+}
+
+async function generateStructuredObject<T>({
+  ai,
+  prompt,
+  schema,
+  assetParts = [],
+}: {
+  ai: GoogleGenAI;
+  prompt: string;
+  schema: Record<string, unknown>;
+  assetParts?: any[];
+}) {
+  const response = await ai.models.generateContent({
+    model: "gemini-3.1-pro-preview",
+    contents: buildMultimodalContents(prompt, assetParts),
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: schema,
+    },
+  });
+
+  return toSafeJson(response.text) as T;
 }
 
 app.post("/api/scrape", async (req, res) => {
@@ -84,38 +195,55 @@ app.post("/api/scrape", async (req, res) => {
       }
     });
 
-    const targetImage =
-      images.find((img) => img.toLowerCase().includes("logo")) || images[0];
+    // Build candidates: logo img → favicon → og:image → first img
+    const logoImg =
+      images.find((img) => img.toLowerCase().includes("logo")) ||
+      $("img[alt*='logo' i], img[class*='logo' i], img[id*='logo' i]")
+        .first()
+        .attr("src") ||
+      null;
+
+    const faviconHref =
+      $('link[rel="icon"]').attr("href") ||
+      $('link[rel="shortcut icon"]').attr("href") ||
+      $('link[rel="apple-touch-icon"]').attr("href") ||
+      null;
+    const faviconUrl = faviconHref
+      ? (() => { try { return new URL(faviconHref, url).href; } catch { return null; } })()
+      : null;
+
+    const ogImage = $('meta[property="og:image"]').attr("content") || null;
+
+    const imageCandidates = [logoImg, ogImage, faviconUrl, images[0]].filter(
+      (v): v is string => !!v,
+    );
 
     let colors: string[] = [];
     let primaryColor = "#000000";
     let secondaryColor = "#ffffff";
 
-    if (targetImage) {
+    // Extract colors from the first reachable image candidate
+    for (const candidate of imageCandidates) {
       try {
-        const imageResponse = await axios.get(targetImage, {
+        const imageResponse = await axios.get(candidate, {
           responseType: "arraybuffer",
           timeout: 5000,
         });
-
-        const vibrant = new Vibrant(
+        const extracted = await extractColorsFromImageBuffer(
           Buffer.from(imageResponse.data, "binary"),
         );
-        const palette = await vibrant.getPalette();
-
-        if (palette.Vibrant) colors.push(palette.Vibrant.hex);
-        if (palette.Muted) colors.push(palette.Muted.hex);
-        if (palette.DarkVibrant) colors.push(palette.DarkVibrant.hex);
-        if (palette.LightVibrant) colors.push(palette.LightVibrant.hex);
-        if (palette.DarkMuted) colors.push(palette.DarkMuted.hex);
-
-        primaryColor = palette.Vibrant?.hex || primaryColor;
-        secondaryColor =
-          palette.Muted?.hex || palette.LightVibrant?.hex || secondaryColor;
-      } catch (error) {
-        console.error("Error extracting colors", error);
+        colors = extracted.colors;
+        primaryColor = extracted.primaryColor;
+        secondaryColor = extracted.secondaryColor;
+        break;
+      } catch {
+        // Try next candidate
       }
     }
+
+    // Supplement with CSS hex colors so whites/blacks/brand neutrals are captured
+    const cssColors = extractCssHexColors(html);
+    colors = deduplicateColors([...colors, ...cssColors]).slice(0, 10);
 
     res.json({
       url,
@@ -126,11 +254,114 @@ app.post("/api/scrape", async (req, res) => {
       colors,
       primary_color: primaryColor,
       secondary_color: secondaryColor,
-      logo_url: targetImage,
+      logo_url: logoImg || ogImage,
     });
   } catch (error: any) {
     console.error("Scrape error:", error.message);
     res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/extract-image-colors", async (req, res) => {
+  try {
+    const { imageBase64 } = req.body as { imageBase64: string };
+    if (!imageBase64) {
+      return res.status(400).json({ error: "imageBase64 required" });
+    }
+
+    const buffer = Buffer.from(imageBase64, "base64");
+    const { colors, primaryColor, secondaryColor } =
+      await extractColorsFromImageBuffer(buffer);
+
+    res.json({
+      colors: deduplicateColors(colors),
+      primary_color: primaryColor,
+      secondary_color: secondaryColor,
+    });
+  } catch (error: any) {
+    console.error("Extract image colors error:", error);
+    res.status(500).json({ error: error.message || "Erro ao extrair cores da imagem" });
+  }
+});
+
+app.post("/api/analyze-instagram", async (req, res) => {
+  try {
+    const { imageBase64, mimeType = "image/jpeg" } = req.body as {
+      imageBase64: string;
+      mimeType?: string;
+    };
+    if (!imageBase64) {
+      return res.status(400).json({ error: "imageBase64 required" });
+    }
+
+    // Extract colors from the screenshot
+    const buffer = Buffer.from(imageBase64, "base64");
+    const { colors, primaryColor, secondaryColor } =
+      await extractColorsFromImageBuffer(buffer);
+
+    // Analyze with Gemini Vision using the same pattern as /api/generate
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+
+    const imagePart = { inlineData: { mimeType, data: imageBase64 } };
+
+    const prompt = `Você é um especialista em branding. Analise este print de perfil do Instagram e extraia as informações da marca com base no que está visível: nome, bio, posts, estética visual e tom de comunicação.
+
+Retorne APENAS JSON com os campos abaixo. Responda sempre em pt-BR.
+- brand_name: nome da conta ou marca
+- product_type: um de [saas, ecommerce, food, service, other]
+- tone: um de [formal, casual, bold, friendly]
+- target_audience: para quem é essa marca, 1 frase
+- value_proposition: o que ela oferece de valor, 1 frase
+- key_pain: dor que ela resolve, 1 frase
+- language: um de [pt-BR, en, es]
+- emoji_style: um de [minimal, moderate, heavy]
+- description: resumo da marca com base na bio e posts visíveis, máximo 2 frases
+- keywords: array de 3 a 5 palavras-chave relevantes`;
+
+    const analysis = await generateStructuredObject<Record<string, unknown>>({
+      ai,
+      prompt,
+      schema: {
+        type: Type.OBJECT,
+        properties: {
+          brand_name: { type: Type.STRING },
+          product_type: { type: Type.STRING },
+          tone: { type: Type.STRING },
+          target_audience: { type: Type.STRING },
+          value_proposition: { type: Type.STRING },
+          key_pain: { type: Type.STRING },
+          language: { type: Type.STRING },
+          emoji_style: { type: Type.STRING },
+          description: { type: Type.STRING },
+          keywords: { type: Type.ARRAY, items: { type: Type.STRING } },
+        },
+        required: [
+          "brand_name",
+          "product_type",
+          "tone",
+          "target_audience",
+          "value_proposition",
+          "key_pain",
+          "language",
+          "emoji_style",
+        ],
+      },
+      assetParts: [imagePart],
+    });
+
+    analysis.product_type = normalizeProductType(analysis.product_type as string);
+
+    res.json({
+      ...analysis,
+      colors: deduplicateColors(colors),
+      primary_color: primaryColor,
+      secondary_color: secondaryColor,
+    });
+  } catch (error: any) {
+    console.error("Analyze Instagram error:", error);
+    res.status(500).json({
+      error: error.message || "Não consegui analisar a imagem. Tenta de novo?",
+    });
   }
 });
 
@@ -206,29 +437,118 @@ Prefer pt-BR whenever the site appears to be Brazilian.`;
   }
 });
 
+const strategySchema = {
+  type: Type.OBJECT,
+  properties: {
+    objective: { type: Type.STRING },
+    angle: { type: Type.STRING },
+    copyApproach: { type: Type.STRING },
+    captionBlueprint: { type: Type.STRING },
+    emotionalVector: { type: Type.STRING },
+    rationale: { type: Type.STRING },
+    imageText: { type: Type.STRING },
+  },
+  required: [
+    "objective",
+    "angle",
+    "copyApproach",
+    "captionBlueprint",
+    "emotionalVector",
+    "rationale",
+    "imageText",
+  ],
+};
+
+const copySchema = {
+  type: Type.OBJECT,
+  properties: {
+    hook: { type: Type.STRING },
+    caption: { type: Type.STRING },
+    cta: { type: Type.STRING },
+    hashtags: { type: Type.STRING },
+  },
+  required: ["hook", "caption", "cta", "hashtags"],
+};
+
+const visualBriefSchema = {
+  type: Type.OBJECT,
+  properties: {
+    modelRecommendation: { type: Type.STRING },
+    visualGoal: { type: Type.STRING },
+    composition: { type: Type.STRING },
+    layout: { type: Type.STRING },
+    background: { type: Type.STRING },
+    productRole: { type: Type.STRING },
+    textTreatment: { type: Type.STRING },
+    avoid: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+    },
+  },
+  required: [
+    "modelRecommendation",
+    "visualGoal",
+    "composition",
+    "layout",
+    "background",
+    "productRole",
+    "textTreatment",
+    "avoid",
+  ],
+};
+
+const criticSchema = {
+  type: Type.OBJECT,
+  properties: {
+    overallScore: { type: Type.NUMBER },
+    brandFit: { type: Type.NUMBER },
+    categoryFit: { type: Type.NUMBER },
+    clarity: { type: Type.NUMBER },
+    originality: { type: Type.NUMBER },
+    conversionReadiness: { type: Type.NUMBER },
+    aiSlopRisk: { type: Type.NUMBER },
+    verdict: { type: Type.STRING },
+    recommendedFix: { type: Type.STRING },
+    notes: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+    },
+  },
+  required: [
+    "overallScore",
+    "brandFit",
+    "categoryFit",
+    "clarity",
+    "originality",
+    "conversionReadiness",
+    "aiSlopRisk",
+    "verdict",
+    "recommendedFix",
+    "notes",
+  ],
+};
+
 app.post("/api/generate", async (req, res) => {
   try {
     const {
       brand,
       postType,
-      postVisualHint,
       format,
       imageStyle,
       includeText,
       regenerateField,
       currentContent,
       selectedAssets = [],
-      imageModelType = "imagen",
+      imageModelType = "nanoBanana",
       marketerPreferences,
     } = req.body as {
       brand: any;
       postType: string;
-      postVisualHint?: string;
       format: string;
       imageStyle: string;
       includeText: boolean;
       regenerateField?: string;
-      currentContent?: Record<string, string>;
+      currentContent?: Record<string, any>;
       selectedAssets?: AssetReference[];
       imageModelType?: ImageModelType;
       marketerPreferences?: Partial<MarketerPreferences> | null;
@@ -267,81 +587,112 @@ app.post("/api/generate", async (req, res) => {
         marketerPreferences,
       });
 
-      const regenResponse = await ai.models.generateContent({
-        model: "gemini-3.1-pro-preview",
-        contents: assetParts.length ? [regenPrompt, ...assetParts] : regenPrompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: { [regenerateField]: { type: Type.STRING } },
-            required: [regenerateField],
-          },
+      const regenResult = await generateStructuredObject<Record<string, string>>({
+        ai,
+        prompt: regenPrompt,
+        schema: {
+          type: Type.OBJECT,
+          properties: { [regenerateField]: { type: Type.STRING } },
+          required: [regenerateField],
         },
+        assetParts,
       });
-
-      const regenResult = toSafeJson(regenResponse.text);
-
-      if (regenResult.image_prompt) {
-        regenResult.image_prompt = appendPromptGuardrails({
-          prompt: regenResult.image_prompt,
-          hook: currentContent.hook || "",
-          includeText,
-          language: brandWithNormalizedType.language || "pt-BR",
-          imageModelType,
-          hasAssets: safeAssets.length > 0,
-        });
-      }
 
       return res.json({ ...currentContent, ...regenResult });
     }
 
-    const prompt = buildContentPrompt({
+    const strategy = await generateStructuredObject<StrategyPlan>({
+      ai,
+      prompt: buildStrategyPrompt({
+        brand: brandWithNormalizedType,
+        postType,
+        format,
+        imageStyle,
+        includeText,
+        selectedAssets: safeAssets,
+        marketerPreferences,
+      }),
+      schema: strategySchema,
+      assetParts,
+    });
+
+    const copy = await generateStructuredObject<{
+      hook: string;
+      caption: string;
+      cta: string;
+      hashtags: string;
+    }>({
+      ai,
+      prompt: buildCopyPrompt({
+        brand: brandWithNormalizedType,
+        postType,
+        includeText,
+        strategy,
+        marketerPreferences,
+      }),
+      schema: copySchema,
+    });
+
+    const visualBrief = await generateStructuredObject<VisualBrief>({
+      ai,
+      prompt: buildVisualBriefPrompt({
+        brand: brandWithNormalizedType,
+        postType,
+        format,
+        imageStyle,
+        imageModelType,
+        selectedAssets: safeAssets,
+        strategy,
+        copy,
+      }),
+      schema: visualBriefSchema,
+      assetParts,
+    });
+
+    const imagePrompt = buildImagePromptFromBrief({
       brand: brandWithNormalizedType,
-      postType,
-      postVisualHint,
       format,
       imageStyle,
       includeText,
       imageModelType,
       selectedAssets: safeAssets,
-      marketerPreferences,
+      strategy,
+      copy,
+      visualBrief,
     });
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.1-pro-preview",
-      contents: assetParts.length ? [prompt, ...assetParts] : prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            hook: { type: Type.STRING },
-            caption: { type: Type.STRING },
-            cta: { type: Type.STRING },
-            hashtags: { type: Type.STRING },
-            image_prompt: { type: Type.STRING },
-          },
-          required: ["hook", "caption", "cta", "hashtags", "image_prompt"],
-        },
+    const critic = await generateStructuredObject<CreativeCritic>({
+      ai,
+      prompt: buildCriticPrompt({
+        brand: brandWithNormalizedType,
+        strategy,
+        copy,
+        visualBrief,
+        imagePrompt,
+      }),
+      schema: criticSchema,
+    });
+
+    res.json({
+      hook: (copy.hook || "").trim(),
+      caption: (copy.caption || "").trim(),
+      cta: (copy.cta || "").trim(),
+      hashtags: (copy.hashtags || "").trim(),
+      image_text: (strategy.imageText || "").trim(),
+      image_prompt: imagePrompt,
+      strategy,
+      visual_brief: {
+        ...visualBrief,
+        avoid: Array.isArray(visualBrief.avoid)
+          ? visualBrief.avoid.filter(Boolean)
+          : [],
       },
+      critic: {
+        ...critic,
+        notes: Array.isArray(critic.notes) ? critic.notes.filter(Boolean) : [],
+      },
+      prompt_versions: PROMPT_VERSIONS,
     });
-
-    const content = toSafeJson(response.text);
-    content.hook = (content.hook || "").trim();
-    content.caption = (content.caption || "").trim();
-    content.cta = (content.cta || "").trim();
-    content.hashtags = (content.hashtags || "").trim();
-    content.image_prompt = appendPromptGuardrails({
-      prompt: content.image_prompt || "",
-      hook: content.hook || "",
-      includeText,
-      language: brandWithNormalizedType.language || "pt-BR",
-      imageModelType,
-      hasAssets: safeAssets.length > 0,
-    });
-
-    res.json(content);
   } catch (error: any) {
     console.error("Generate error:", error);
     res.status(500).json({ error: error.message || "Erro ao gerar conteudo" });
@@ -412,7 +763,7 @@ app.post("/api/image", async (req, res) => {
 
     const response = await ai.models.generateContent({
       model: imageModel,
-      contents: referenceParts.length ? [prompt, ...referenceParts] : prompt,
+      contents: buildMultimodalContents(prompt, referenceParts),
       config: {
         responseModalities: [Modality.IMAGE],
         imageConfig: { aspectRatio, imageSize },

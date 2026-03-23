@@ -2,13 +2,13 @@ import axios from "axios";
 import { createPartFromBase64 } from "@google/genai";
 import {
   normalizeMarketerPreferences,
-  type CaptionStyle,
-  type CopyApproach,
   type CtaIntensity,
   type EmojiUsage,
   type MarketerPreferences,
+  type PostObjective,
   type ToneOverride,
 } from "./src/lib/marketerControls";
+import { getFewShotExamples } from "./src/lib/fewShotBank";
 
 export type ImageModelType = "imagen" | "nanoBanana";
 
@@ -19,8 +19,59 @@ export type AssetReference = {
   type?: string | null;
 };
 
+export type StrategyPlan = {
+  objective: string;
+  angle: string;
+  copyApproach: string;
+  captionBlueprint: string;
+  emotionalVector: string;
+  rationale: string;
+  imageText: string;
+};
+
+export type VisualBrief = {
+  modelRecommendation: ImageModelType;
+  visualGoal: string;
+  composition: string;
+  layout: string;
+  background: string;
+  productRole: string;
+  textTreatment: string;
+  avoid: string[];
+};
+
+export type CreativeCritic = {
+  overallScore: number;
+  brandFit: number;
+  categoryFit: number;
+  clarity: number;
+  originality: number;
+  conversionReadiness: number;
+  aiSlopRisk: number;
+  verdict: string;
+  recommendedFix: string;
+  notes: string[];
+};
+
+type CopyApproachResolved =
+  | "direct"
+  | "storytelling"
+  | "educational"
+  | "proof"
+  | "provocative";
+
+type CaptionBlueprint = "short" | "medium" | "story" | "list";
+type EmojiPolicyResolved = "none" | "minimal" | "moderate";
+
+export const PROMPT_VERSIONS = {
+  strategy: "1.0",
+  copy: "1.0",
+  visual: "1.0",
+  critic: "1.0",
+} as const;
+
 export const IMAGEN_NEGATIVE_PROMPT =
-  "phone mockup, browser chrome, extra borders, duplicated products, floating text blocks, long paragraphs, unreadable typography, warped letters, clipart, cartoon icons, low detail, blurry subject, distorted hands, cropped product, cut off packaging";
+  "phone mockup, browser chrome, fake app screen, placeholder brand, lorem ipsum, duplicated product, warped food, unreadable typography, long paragraphs, clipart, cartoon icons, distorted hands, cropped hero product, extra borders";
 
 export function normalizeKey(value?: string | null): string {
   return (value || "")
@@ -34,22 +85,15 @@ export function normalizeProductType(value?: string | null): string {
   const normalized = normalizeKey(value);
 
   if (
-    [
-      "saas",
-      "sistema",
-      "system",
-      "software",
-      "app",
-      "platform",
-    ].includes(normalized)
+    ["saas", "sistema", "system", "software", "app", "platform"].includes(
+      normalized,
+    )
   ) {
     return "saas";
   }
 
   if (
-    ["ecommerce", "e-commerce", "loja", "store", "shop"].includes(
-      normalized,
-    )
+    ["ecommerce", "e-commerce", "loja", "store", "shop"].includes(normalized)
   ) {
     return "ecommerce";
   }
@@ -83,8 +127,8 @@ export function normalizeProductType(value?: string | null): string {
   return "other";
 }
 
-export function hexToColorName(hex: string): string {
-  const cleanHex = hex.replace("#", "");
+export function hexToColorName(hex: string) {
+  const cleanHex = (hex || "#000000").replace("#", "");
   const r = parseInt(cleanHex.substring(0, 2), 16);
   const g = parseInt(cleanHex.substring(2, 4), 16);
   const b = parseInt(cleanHex.substring(4, 6), 16);
@@ -101,6 +145,7 @@ export function hexToColorName(hex: string): string {
 
   let hue = 0;
   const delta = max - min;
+
   if (max === r) hue = ((g - b) / delta + (g < b ? 6 : 0)) * 60;
   else if (max === g) hue = ((b - r) / delta + 2) * 60;
   else hue = ((r - g) / delta + 4) * 60;
@@ -140,92 +185,354 @@ export function hexToColorName(hex: string): string {
   return prefix + colorName;
 }
 
-export function getPostTypePlaybook(postType: string) {
+function resolveObjective(
+  selectedObjective: PostObjective,
+  postType: string,
+): Exclude<PostObjective, "auto"> {
+  if (selectedObjective !== "auto") {
+    return selectedObjective;
+  }
+
+  const key = normalizeKey(postType);
+
+  if (
+    key.includes("lancamento") ||
+    key.includes("novidade") ||
+    key.includes("evento") ||
+    key.includes("webinar")
+  ) {
+    return "launch";
+  }
+
+  if (
+    key.includes("oferta") ||
+    key.includes("cta") ||
+    key.includes("oferta direta")
+  ) {
+    return "conversion";
+  }
+
+  if (
+    key.includes("dica") ||
+    key.includes("tutorial") ||
+    key.includes("mito") ||
+    key.includes("numero") ||
+    key.includes("resultado") ||
+    key.includes("depoimento") ||
+    key.includes("prova social") ||
+    key.includes("antes") ||
+    key.includes("depois")
+  ) {
+    return "consideration";
+  }
+
+  if (key.includes("bastidores")) {
+    return "retention";
+  }
+
+  if (key.includes("oferta") || key.includes("relampago") || key.includes("promo")) {
+    return "offer";
+  }
+
+  if (key.includes("autoridade") || key.includes("resultado") && key.includes("numero")) {
+    return "authority";
+  }
+
+  if (key.includes("comunidade") || key.includes("pergunta") || key.includes("enquete")) {
+    return "community";
+  }
+
+  if (key.includes("evento") || key.includes("webinar")) {
+    return "local_traffic";
+  }
+
+  return "awareness";
+}
+
+function resolveCopyApproach(
+  objective: Exclude<PostObjective, "auto">,
+  postType: string,
+): CopyApproachResolved {
+  const key = normalizeKey(postType);
+
+  if (
+    key.includes("numero") ||
+    key.includes("resultado") ||
+    key.includes("depoimento") ||
+    key.includes("prova social")
+  ) {
+    return "proof";
+  }
+
+  if (key.includes("dica") || key.includes("tutorial") || key.includes("mito")) {
+    return "educational";
+  }
+
+  if (key.includes("bastidores") || key.includes("founder")) {
+    return "storytelling";
+  }
+
+  if (key.includes("dor do cliente") || key.includes("pergunta")) {
+    return "provocative";
+  }
+
+  if (objective === "awareness" || objective === "launch") {
+    return "provocative";
+  }
+
+  return "direct";
+}
+
+function resolveCaptionBlueprint(
+  objective: Exclude<PostObjective, "auto">,
+  postType: string,
+  copyApproach: CopyApproachResolved,
+): CaptionBlueprint {
+  const key = normalizeKey(postType);
+
+  if (copyApproach === "storytelling") return "story";
+  if (copyApproach === "educational") return "list";
+
+  if (
+    objective === "conversion" ||
+    objective === "launch" ||
+    key.includes("oferta") ||
+    key.includes("cta")
+  ) {
+    return "short";
+  }
+
+  return "medium";
+}
+
+function resolveCtaIntensity(
+  selectedIntensity: CtaIntensity,
+  objective: Exclude<PostObjective, "auto">,
+): Exclude<CtaIntensity, "auto"> {
+  if (selectedIntensity !== "auto") {
+    return selectedIntensity;
+  }
+
+  if (objective === "conversion" || objective === "launch") {
+    return "hard";
+  }
+
+  if (objective === "awareness") {
+    return "soft";
+  }
+
+  return "medium";
+}
+
+function resolveEmojiUsage(
+  selectedEmojiUsage: EmojiUsage,
+  brandEmojiStyle?: string | null,
+  productType?: string | null,
+): EmojiPolicyResolved {
+  if (selectedEmojiUsage !== "followBrand") {
+    return selectedEmojiUsage;
+  }
+
+  const productKey = normalizeProductType(productType);
+  const brandSignal = normalizeKey(brandEmojiStyle);
+
+  if (productKey === "saas") {
+    return "none";
+  }
+
+  if (brandSignal === "heavy" || brandSignal === "moderate") {
+    return "moderate";
+  }
+
+  return "minimal";
+}
+
+function getCaptionCharacterLimit(captionBlueprint: CaptionBlueprint) {
+  switch (captionBlueprint) {
+    case "short":
+      return 220;
+    case "story":
+      return 420;
+    case "list":
+      return 320;
+    default:
+      return 300;
+  }
+}
+
+function getObjectiveGuidance(objective: Exclude<PostObjective, "auto">) {
+  switch (objective) {
+    case "awareness":
+      return "Win attention fast, create memorability, and keep the ask light.";
+    case "consideration":
+      return "Reduce doubt, explain value clearly, and make the brand feel credible.";
+    case "conversion":
+      return "Turn attention into action with a clear offer, gain, or next step.";
+    case "retention":
+      return "Re-engage people who already know the brand with relevance and warmth.";
+    case "launch":
+      return "Make the post feel new, timely, and worth noticing right now.";
+    case "offer":
+      return "Communicate the offer clearly and make the value immediately obvious. Prioritize the gain over the conditions.";
+    case "authority":
+      return "Position the brand as a credible reference. Use evidence, process insight, or informed perspective.";
+    case "community":
+      return "Invite participation, spark conversation, and make the audience feel seen and part of something.";
+    case "local_traffic":
+      return "Drive physical presence. Make the where and when concrete, and the reason to show up compelling.";
+    case "seasonal":
+      return "Tie the message to the timely moment. Make the brand feel present and relevant right now.";
+  }
+}
+
+function getCopyApproachGuidance(copyApproach: CopyApproachResolved) {
+  switch (copyApproach) {
+    case "direct":
+      return "Get to the point quickly, keep the benefit visible, and avoid warm-up that wastes attention.";
+    case "storytelling":
+      return "Open with a concrete situation, create momentum, then land the payoff and CTA.";
+    case "educational":
+      return "Teach one useful thing clearly and make it easy to scan at a glance.";
+    case "proof":
+      return "Anchor the message in believable evidence, result, trust, or product truth.";
+    case "provocative":
+      return "Use contrast, a sharp angle, or a pattern interrupt without sounding like clickbait.";
+  }
+}
+
+function getCaptionBlueprintGuidance(captionBlueprint: CaptionBlueprint) {
+  switch (captionBlueprint) {
+    case "short":
+      return "Keep the caption lean and fast, one compact block or two short lines.";
+    case "story":
+      return "Structure the caption as setup, tension, payoff, then CTA.";
+    case "list":
+      return "Make the caption scannable with steps, bullets, or short stacked lines.";
+    default:
+      return "Use two short blocks with enough context to persuade without dragging.";
+  }
+}
+
+function getToneGuidance(
+  toneOverride: ToneOverride,
+  brandTone?: string | null,
+) {
+  const baseTone = brandTone || "natural";
+
+  switch (toneOverride) {
+    case "casual":
+      return `Sound lighter and closer than the base brand tone (${baseTone}), without turning sloppy.`;
+    case "premium":
+      return `Sound more polished and restrained than the base brand tone (${baseTone}).`;
+    case "technical":
+      return `Sound more precise and informed than the base brand tone (${baseTone}).`;
+    case "sales":
+      return `Sound more commercial than the base brand tone (${baseTone}), but stay believable.`;
+    default:
+      return `Stay aligned to the base brand tone (${baseTone}) and keep it publish-ready.`;
+  }
+}
+
+function getEmojiGuidance(emojiUsage: EmojiPolicyResolved) {
+  switch (emojiUsage) {
+    case "none":
+      return "Use zero emojis anywhere in hook, caption, CTA, and hashtags.";
+    case "minimal":
+      return "Use at most one emoji in the full copy package, only if it improves tone or readability.";
+    case "moderate":
+      return "Use a few emojis only when natural, never stacked, never as filler.";
+  }
+}
+
+function getCtaGuidance(ctaIntensity: Exclude<CtaIntensity, "auto">) {
+  switch (ctaIntensity) {
+    case "soft":
+      return "Invite the next step gently, without pressure.";
+    case "hard":
+      return "Use a direct CTA with clear action and urgency only when the context supports it.";
+    default:
+      return "Use a clear CTA that is assertive without sounding pushy.";
+  }
+}
+
+function getPostTypePlaybook(postType: string) {
   const key = normalizeKey(postType);
 
   if (key.includes("dor do cliente")) {
     return {
       copyGoal:
-        "Lead with the pain and name a problem the customer instantly recognizes.",
+        "Lead with a pain the customer instantly recognizes and then pivot toward relief.",
       visualGoal:
-        "Build tension first: a before-state, frustration, contrast, emotional clarity, and a visible problem scenario.",
-      ctaStyle:
-        "Invite the user to escape the pain with a practical next step.",
+        "Show the category pain in a plausible, product-led way instead of defaulting to a generic sad portrait.",
     };
   }
 
   if (key.includes("solucao") || key.includes("produto")) {
     return {
       copyGoal:
-        "Position the brand as the practical solution and make the transformation obvious.",
+        "Position the brand as the practical solution and make the payoff obvious.",
       visualGoal:
-        "Make the product or service the hero, clean framing, brighter lighting, and clear value demonstration.",
-      ctaStyle:
-        "Push the audience toward trying, booking, or exploring the solution.",
+        "Make the product or service the hero with cleaner framing and direct value communication.",
     };
   }
 
   if (key.includes("lancamento") || key.includes("novidade")) {
     return {
-      copyGoal: "Sound new, energetic, and worth paying attention to now.",
+      copyGoal: "Sound new, sharp, and worth paying attention to right now.",
       visualGoal:
-        "Launch energy, bold focal point, movement, reveal moment, and premium excitement.",
-      ctaStyle: "Use urgency and novelty to drive immediate action.",
+        "Create a launch moment with energy, reveal, and premium focus on the hero subject.",
     };
   }
 
-  if (key.includes("oferta relampago")) {
+  if (key.includes("oferta")) {
     return {
       copyGoal:
-        "Communicate the offer fast and make the user feel the clock ticking.",
+        "Communicate the offer fast and make the value immediately legible.",
       visualGoal:
-        "High contrast promo composition with room for one short offer headline and a strong urgency cue.",
-      ctaStyle: "Use a direct CTA with time pressure.",
+        "Build a promotional piece with strong hierarchy, room for price or benefit, and instant readability.",
     };
   }
 
   if (key.includes("prova social") || key.includes("depoimento")) {
     return {
-      copyGoal: "Build trust with a real result, quote, or customer win.",
+      copyGoal:
+        "Build trust with believable proof, testimonial energy, or grounded result framing.",
       visualGoal:
-        "Warm, human, trustworthy portrait or testimonial-led composition with social proof cues.",
-      ctaStyle: "Invite the audience to trust the brand or see similar results.",
+        "Use warmth, trust cues, and a composition that feels credible rather than staged stock-photo happy.",
     };
   }
 
   if (key.includes("bastidores") || key.includes("founder")) {
     return {
-      copyGoal: "Feel human, authentic, and founder-close.",
+      copyGoal:
+        "Feel human and close to the brand without becoming diary-like or self-indulgent.",
       visualGoal:
-        "Behind-the-scenes realism, candid atmosphere, workspace or production context, and lifestyle warmth.",
-      ctaStyle: "Invite conversation, connection, or a softer conversion step.",
+        "Show a believable behind-the-scenes moment with warmth and brand intimacy.",
     };
   }
 
   if (key.includes("antes") || key.includes("depois")) {
     return {
-      copyGoal: "Make the transformation unmistakable.",
+      copyGoal: "Make the transformation obvious and easy to compare.",
       visualGoal:
-        "Two-state storytelling with a clear before/after contrast and balanced comparison layout.",
-      ctaStyle: "Prompt the user to imagine their own transformation.",
+        "Use side-by-side comparison or clear transformation cues without clutter.",
     };
   }
 
   if (key.includes("numero") || key.includes("resultado")) {
     return {
-      copyGoal: "Anchor the post on one impressive number or measurable outcome.",
+      copyGoal: "Anchor the idea on one meaningful number or measurable outcome.",
       visualGoal:
-        "Make the number the hero, with a data-led composition, clarity, trust, and premium polish.",
-      ctaStyle: "Invite the audience to learn how to achieve the same result.",
+        "Make the number the hero with data-led clarity and premium polish.",
     };
   }
 
   if (key.includes("pergunta") || key.includes("enquete")) {
     return {
-      copyGoal: "Spark curiosity and make the audience answer mentally.",
+      copyGoal:
+        "Spark curiosity and mental participation with one sharp question.",
       visualGoal:
-        "Minimal but intriguing composition that supports one bold question and a conversational tone.",
-      ctaStyle: "Ask for a reply, opinion, or DM.",
+        "Use a bold but minimal composition that makes the question feel intentional.",
     };
   }
 
@@ -233,100 +540,96 @@ export function getPostTypePlaybook(postType: string) {
     return {
       copyGoal: "Teach one useful thing clearly and fast.",
       visualGoal:
-        "Instructional layout, educational clarity, callouts, arrows, steps, or a demonstrative setup.",
-      ctaStyle: "Invite the audience to save, share, or apply the tip.",
+        "Bias toward clarity, callouts, demonstration, or simple step-based composition.",
     };
   }
 
   if (key.includes("mito")) {
     return {
-      copyGoal: "Create contrast between a wrong belief and the correct answer.",
+      copyGoal: "Create contrast between the wrong belief and the better answer.",
       visualGoal:
-        "Duality composition with visible contrast between myth and truth sides.",
-      ctaStyle: "Push the audience to rethink the topic or learn more.",
+        "Show duality, contrast, or split composition that helps the idea land instantly.",
     };
   }
 
   if (key.includes("citacao") || key.includes("inspiracional")) {
     return {
-      copyGoal: "Deliver one memorable line with emotional resonance.",
+      copyGoal: "Deliver one memorable line with emotional resonance and restraint.",
       visualGoal:
-        "Typography-led composition with atmosphere, texture, softness, and premium restraint.",
-      ctaStyle: "Use a light CTA, usually save, share, or follow.",
+        "Make typography and atmosphere do the work with premium restraint.",
     };
   }
 
   if (key.includes("cta") || key.includes("oferta direta")) {
     return {
-      copyGoal: "Be direct, commercial, and very clear about the next action.",
+      copyGoal:
+        "Be direct, commercial, and explicit about the desired next action.",
       visualGoal:
-        "Single-minded conversion piece with strong focal hierarchy and one obvious action zone.",
-      ctaStyle: "Use a hard CTA with low ambiguity.",
+        "Single-minded conversion piece with one obvious action zone and strong hierarchy.",
     };
   }
 
   if (key.includes("evento") || key.includes("webinar")) {
     return {
-      copyGoal: "Explain the event and make the signup feel worthwhile.",
+      copyGoal:
+        "Explain the event quickly and make attendance feel worthwhile.",
       visualGoal:
-        "Structured announcement layout with date/time hierarchy and a polished event feel.",
-      ctaStyle: "Drive registration or attendance.",
+        "Create an announcement layout with clear date/time hierarchy and polished organization.",
     };
   }
 
   return {
     copyGoal:
-      "Create a sharp Instagram post aligned to the brand and the funnel stage.",
+      "Create a strong branded social post aligned to the product category and post goal.",
     visualGoal:
-      "Compose the image so the message is instantly readable and visually premium.",
-    ctaStyle: "Use a CTA that matches the content and audience intent.",
+      "Compose the image so the message is readable fast and the piece feels intentionally designed.",
   };
 }
 
-export function getImageStylePlaybook(imageStyle: string) {
+function getImageStylePlaybook(imageStyle: string) {
   const key = normalizeKey(imageStyle);
 
   if (key.includes("canva")) {
-    return "Premium social design, polished hierarchy, clean brand blocks, smart spacing, and a layout that feels publish-ready.";
+    return "Finished social artwork with layered composition, text hierarchy, badges or shapes when relevant, and the product integrated directly into the layout.";
   }
   if (key.includes("fotografico") || key.includes("realista")) {
-    return "Photorealistic image, believable materials, professional lighting, real-world textures, and natural depth.";
+    return "Photorealistic materials, believable depth, professional lighting, and natural detail.";
   }
   if (key.includes("dark")) {
-    return "Dark premium aesthetic, near-black surfaces, controlled glow, rich contrast, and a cinematic luxury finish.";
+    return "Dark premium mood, near-black surfaces, controlled glow, and rich contrast.";
   }
   if (key.includes("gradiente")) {
-    return "Bold gradient-led composition, energetic color transitions, smooth lighting, and modern motion-inspired shapes.";
+    return "Gradient-led composition with modern energy and clean motion-inspired accents.";
   }
   if (key.includes("minimalista") || key.includes("clean")) {
-    return "Minimal composition, fewer elements, strong negative space, clean hierarchy, and premium restraint.";
+    return "Minimal composition, fewer elements, clean negative space, and premium restraint.";
   }
   if (key.includes("cinematografico") || key.includes("estudio")) {
-    return "Studio-grade cinematic lighting, hero framing, premium highlights, mood, and lens-aware realism.";
+    return "Studio-grade hero lighting, cinematic depth, premium highlights, and precise framing.";
   }
   if (key.includes("neon") || key.includes("futurista")) {
-    return "Futuristic neon styling, luminous accents, glossy materials, moody contrast, and a high-end digital feel.";
+    return "Futuristic mood with luminous accents, glossy materials, and deliberate digital drama.";
   }
 
-  return "Polished branded social visual with strong hierarchy and premium finish.";
+  return "Polished branded visual with strong hierarchy and premium finish.";
 }
 
-export function getProductVisualGuidance(productType: string) {
+function getProductVisualGuidance(productType: string) {
   switch (normalizeProductType(productType)) {
     case "saas":
-      return "Use interface, device, dashboard, workflow, or digital product metaphors when relevant. Avoid generic corporate stock scenes.";
+      return "Show utility, workflow, interface fragments, or digital clarity. Avoid fake dashboard gibberish and generic corporate stock scenes.";
     case "ecommerce":
-      return "Show the product clearly, with retail polish, packaging cues, and a conversion-friendly hero composition.";
+      return "Show the product clearly with retail polish, packaging cues, and a conversion-friendly hero composition.";
     case "food":
-      return "Respect the actual food appearance, appetizing textures, believable ingredients, and strong product hero treatment.";
+      return "Keep the food appetizing, believable, and texture-rich. The product should be the hero, not a prop inside a phone mockup.";
     case "service":
-      return "Show outcome, transformation, expert-led context, or a believable customer interaction instead of abstract stock visuals.";
+      return "Show outcome, expert-led context, or believable customer interaction rather than abstract business imagery.";
     default:
-      return "Show a believable hero subject tied to the brand's real offer.";
+      return "Show a believable hero subject tied to the brand's actual offer.";
   }
 }
 
-export function getAssetContext(selectedAssets: AssetReference[]) {
+function getAssetContext(selectedAssets: AssetReference[]) {
   if (!selectedAssets.length) {
     return {
       text: "No reference assets are attached.",
@@ -343,267 +646,98 @@ export function getAssetContext(selectedAssets: AssetReference[]) {
     .join("\n");
 
   return {
-    text: `Reference assets are attached. Inspect them carefully and use the real product details from the images.\n${assetList}`,
+    text: `Reference assets are attached and should affect the creative direction.\n${assetList}`,
     hasAssets: true,
   };
 }
 
-function resolveCopyApproach(
-  selectedApproach: CopyApproach,
-  postType: string,
-): CopyApproach {
-  if (selectedApproach !== "auto") {
-    return selectedApproach;
-  }
-
-  const key = normalizeKey(postType);
-
-  if (key.includes("bastidores") || key.includes("founder")) {
-    return "storytelling";
-  }
-
-  if (key.includes("dica") || key.includes("tutorial")) {
-    return "educational";
-  }
-
-  if (
-    key.includes("prova social") ||
-    key.includes("depoimento") ||
-    key.includes("numero") ||
-    key.includes("resultado")
-  ) {
-    return "proof";
-  }
-
-  if (
-    key.includes("pergunta") ||
-    key.includes("enquete") ||
-    key.includes("mito") ||
-    key.includes("dor do cliente")
-  ) {
-    return "provocative";
-  }
-
-  return "direct";
-}
-
-function resolveCaptionStyle(
-  selectedStyle: CaptionStyle,
-  postType: string,
-  copyApproach: CopyApproach,
-): CaptionStyle {
-  if (selectedStyle !== "auto") {
-    return selectedStyle;
-  }
-
-  const key = normalizeKey(postType);
-
-  if (copyApproach === "storytelling") {
-    return "miniStory";
-  }
-
-  if (copyApproach === "educational") {
-    return "list";
-  }
-
-  if (
-    key.includes("oferta relampago") ||
-    key.includes("cta") ||
-    key.includes("oferta direta") ||
-    key.includes("pergunta") ||
-    key.includes("enquete")
-  ) {
-    return "short";
-  }
-
-  return "medium";
-}
-
-function resolveCtaIntensity(
-  selectedIntensity: CtaIntensity,
-  postType: string,
-): CtaIntensity {
-  if (selectedIntensity !== "auto") {
-    return selectedIntensity;
-  }
-
-  const key = normalizeKey(postType);
-
-  if (
-    key.includes("oferta relampago") ||
-    key.includes("cta") ||
-    key.includes("oferta direta") ||
-    key.includes("lancamento") ||
-    key.includes("evento") ||
-    key.includes("webinar")
-  ) {
-    return "hard";
-  }
-
-  if (
-    key.includes("citacao") ||
-    key.includes("inspiracional") ||
-    key.includes("pergunta") ||
-    key.includes("enquete") ||
-    key.includes("bastidores")
-  ) {
-    return "soft";
-  }
-
-  return "medium";
-}
-
-function resolveEmojiUsage(
-  selectedEmojiUsage: EmojiUsage,
-  brandEmojiStyle?: string | null,
-): EmojiUsage {
-  if (selectedEmojiUsage !== "followBrand") {
-    return selectedEmojiUsage;
-  }
-
-  const brandSignal = normalizeKey(brandEmojiStyle);
-  if (brandSignal === "moderate" || brandSignal === "heavy") {
-    return "moderate";
-  }
-
-  return "minimal";
-}
-
-function getCopyApproachGuidance(copyApproach: CopyApproach) {
-  switch (copyApproach) {
-    case "direct":
-      return "Lead with the value fast, cut the warm-up, and keep every sentence pulling the reader toward the point.";
-    case "storytelling":
-      return "Open with a concrete moment or tension, then reveal the shift or payoff before landing the CTA.";
-    case "educational":
-      return "Teach one useful insight clearly, with strong logic, concrete takeaways, and easy scanning.";
-    case "proof":
-      return "Anchor the post in trust, evidence, results, or believable proof rather than abstract promises.";
-    case "provocative":
-      return "Use contrast, a sharp opinion, or a pattern interrupt that sparks curiosity without sounding like clickbait.";
-    default:
-      return "Choose the strongest structure for the post goal instead of defaulting to generic AI storytelling.";
-  }
-}
-
-function getCopyApproachVisualGuidance(copyApproach: CopyApproach) {
-  switch (copyApproach) {
-    case "direct":
-      return "Use a cleaner, conversion-first composition with one hero focal point and less narrative clutter.";
-    case "storytelling":
-      return "Show a scene with emotional context, a sense of moment, and visible before/after or tension/payoff cues.";
-    case "educational":
-      return "Bias toward instructional clarity, demonstration, callouts, and a layout that feels easy to understand at a glance.";
-    case "proof":
-      return "Prioritize trust cues, realism, testimonial energy, proof artifacts, and a grounded outcome-first visual.";
-    case "provocative":
-      return "Build contrast, tension, and pattern interruption with a bold focal choice and immediate visual curiosity.";
-    default:
-      return "Let the copy angle shape the composition so the visual feels purpose-built for this post.";
-  }
-}
-
-function getToneGuidance(
-  toneOverride: ToneOverride,
-  brandTone?: string | null,
-) {
-  const baseTone = brandTone || "natural";
-
-  switch (toneOverride) {
-    case "casual":
-      return `Sound closer, lighter, and more conversational than the base brand tone (${baseTone}), without becoming sloppy.`;
-    case "premium":
-      return `Sound more polished, restrained, and premium than the base brand tone (${baseTone}). Avoid hype, slang overload, and noisy punctuation.`;
-    case "technical":
-      return `Sound more precise, informed, and credibility-led than the base brand tone (${baseTone}). Prefer clarity over charm.`;
-    case "sales":
-      return `Sound more conversion-oriented than the base brand tone (${baseTone}), but stay truthful and avoid spammy sales cliches.`;
-    default:
-      return `Stay aligned to the brand's core tone (${baseTone}) while keeping it natural and publish-ready.`;
-  }
-}
-
-function getEmojiGuidance(emojiUsage: EmojiUsage) {
-  switch (emojiUsage) {
-    case "none":
-      return "Use zero emojis anywhere in the hook, caption, CTA, and hashtags.";
-    case "minimal":
-      return "Use at most one emoji in the full post package, and only if it genuinely improves tone or readability.";
-    case "moderate":
-      return "Use a few emojis only when natural, never stacked, never on every line, and never as filler.";
-    default:
-      return "Do not assume emojis are needed. Use them only when clearly helpful.";
-  }
-}
-
-function getCaptionGuidance(captionStyle: CaptionStyle) {
-  switch (captionStyle) {
-    case "short":
-      return "Keep the caption lean, punchy, and quick to read. One compact block or two short lines max.";
-    case "medium":
-      return "Use two short blocks with enough context to persuade without dragging.";
-    case "miniStory":
-      return "Structure the caption like a mini story: setup, tension, payoff, then CTA.";
-    case "list":
-      return "Make the caption highly scannable with short lines, bullets, or numbered steps when appropriate.";
-    default:
-      return "Choose the caption structure that best fits the post goal.";
-  }
-}
-
-function getCaptionCharacterLimit(captionStyle: CaptionStyle) {
-  switch (captionStyle) {
-    case "short":
-      return 220;
-    case "miniStory":
-      return 420;
-    case "list":
-      return 360;
-    default:
-      return 320;
-  }
-}
-
-function getCtaGuidance(ctaIntensity: CtaIntensity) {
-  switch (ctaIntensity) {
-    case "soft":
-      return "Use a low-pressure CTA that invites the next step without forcing urgency.";
-    case "hard":
-      return "Use a direct, conversion-first CTA with urgency only if the context truly supports it.";
-    default:
-      return "Use a clear CTA that is assertive but not pushy.";
-  }
-}
-
-export function appendPromptGuardrails({
-  prompt,
-  hook,
-  includeText,
-  language,
-  imageModelType,
-  hasAssets,
+function getStyleSafetyRules({
+  imageStyle,
+  productType,
+  postType,
 }: {
-  prompt: string;
-  hook: string;
-  includeText: boolean;
-  language: string;
-  imageModelType: ImageModelType;
-  hasAssets: boolean;
+  imageStyle: string;
+  productType: string;
+  postType: string;
 }) {
-  let finalPrompt = prompt.trim();
+  const styleKey = normalizeKey(imageStyle);
+  const productKey = normalizeProductType(productType);
+  const postKey = normalizeKey(postType);
+  const rules: string[] = [];
 
-  if (includeText && hook) {
-    finalPrompt += ` Render the exact headline text "${hook}" in ${language} with bold, clean, fully legible typography.`;
-  } else {
-    finalPrompt += " Do not render any text, letters, captions, or typography in the image.";
+  if (styleKey.includes("canva")) {
+    rules.push(
+      "Treat the output as finished social artwork, not as a photo with a text box pasted over it.",
+    );
+    rules.push(
+      "Never use phones, tablets, browser windows, wall posters, or social app screenshots as the main framing device.",
+    );
   }
 
-  if (hasAssets && imageModelType === "nanoBanana") {
-    finalPrompt +=
-      " Use the attached reference image(s) as the source of truth for the product identity, preserving the real shape, materials, and recognizable details.";
+  rules.push(
+    "Never use placeholder branding such as BRAND, LOGO, lorem ipsum, fake website UI, or generic badge text.",
+  );
+
+  if (productKey === "food") {
+    rules.push(
+      "Keep the food product as the hero and make it look craveable, believable, and high quality.",
+    );
+    rules.push(
+      "Do not show deformed, parody, bitten-with-a-face, or novelty versions of the food unless humor was explicitly requested.",
+    );
   }
 
-  return finalPrompt;
+  if (productKey === "food" && postKey.includes("dor do cliente")) {
+    rules.push(
+      "Show the pain through bad quality, artificial look, poor texture, or disappointing presentation instead of a sad person holding food.",
+    );
+  }
+
+  if (productKey === "saas") {
+    rules.push(
+      "Do not rely on random glowing UI panels or meaningless futuristic dashboards.",
+    );
+  }
+
+  return rules;
+}
+
+function formatLayout(format: string) {
+  const key = normalizeKey(format);
+
+  if (key.includes("story") || key.includes("1920")) {
+    return "vertical Instagram story or reel cover layout";
+  }
+
+  if (key.includes("feed") || key.includes("1080x1080")) {
+    return "square Instagram feed layout";
+  }
+
+  return "social media layout";
+}
+
+function quoteText(value?: string | null) {
+  return (value || "").replace(/"/g, '\\"').trim();
+}
+
+function buildBrandContextBlock(brand: any) {
+  const productType = normalizeProductType(brand.product_type);
+  return `- Brand name: ${brand.name}
+- Product type: ${productType}
+- Tone of voice: ${brand.tone || "natural"}
+- Target audience: ${brand.target_audience || "Not specified"}
+- Value proposition: ${brand.value_proposition || "Not specified"}
+- Key pain: ${brand.key_pain || "Not specified"}
+- Description: ${brand.description || "Not specified"}
+- Headlines from site: ${brand.headlines || "None"}
+- Body text from site: ${brand.body_text || "None"}
+- Keywords: ${brand.keywords?.join(", ") || "None"}
+- Primary color mood: ${hexToColorName(brand.primary_color || "#000000")}
+- Secondary color mood: ${hexToColorName(brand.secondary_color || "#ffffff")}
+- Language: ${brand.language || "pt-BR"}
+- Brand emoji signal: ${brand.emoji_style || "unknown"}
+- Available proof (use only this, never invent proof): ${brand.prova_disponivel || "Not specified"}
+- Claim restrictions (never fabricate these): ${brand.claim_restrictions || "Not specified"}`;
 }
 
 export async function fetchImageData(url: string) {
@@ -640,159 +774,445 @@ export async function buildAssetParts(
   );
 }
 
-export function buildContentPrompt({
+export function buildStrategyPrompt({
   brand,
   postType,
-  postVisualHint,
   format,
   imageStyle,
   includeText,
-  imageModelType,
   selectedAssets,
   marketerPreferences,
 }: {
   brand: any;
   postType: string;
-  postVisualHint?: string;
   format: string;
   imageStyle: string;
   includeText: boolean;
-  imageModelType: ImageModelType;
   selectedAssets: AssetReference[];
   marketerPreferences?: Partial<MarketerPreferences> | null;
 }) {
-  const brandLanguage = brand.language || "pt-BR";
+  const preferences = normalizeMarketerPreferences(marketerPreferences);
+  const productType = normalizeProductType(brand.product_type);
+  const resolvedObjective = resolveObjective(preferences.objective, postType);
+  const copyApproach = resolveCopyApproach(resolvedObjective, postType);
+  const captionBlueprint = resolveCaptionBlueprint(
+    resolvedObjective,
+    postType,
+    copyApproach,
+  );
+  const ctaIntensity = resolveCtaIntensity(
+    preferences.ctaIntensity,
+    resolvedObjective,
+  );
+  const emojiPolicy = resolveEmojiUsage(
+    preferences.emojiUsage,
+    brand.emoji_style,
+    productType,
+  );
+  const assetContext = getAssetContext(selectedAssets);
+  const postTypePlaybook = getPostTypePlaybook(postType);
+
+  const fewShotExamples = getFewShotExamples(productType, postType);
+  const fewShotBlock =
+    fewShotExamples.length > 0
+      ? `\n<few_shot_examples>\n${fewShotExamples
+          .map(
+            (ex, i) =>
+              `<example index="${i + 1}">\n` +
+              `  <angle>${ex.angle}</angle>\n` +
+              `  <hook_snippet>${ex.hook.split(" ").slice(0, 25).join(" ")}${ex.hook.split(" ").length > 25 ? "…" : ""}</hook_snippet>\n` +
+              `  <image_text>${ex.imageText}</image_text>\n` +
+              `</example>`,
+          )
+          .join("\n")}\n</few_shot_examples>`
+      : "";
+
+  return `<role>
+You are a senior Brazilian creative strategist for social media brands.
+</role>
+
+<goal>
+Build the creative strategy before any final copy or image prompt is written.
+</goal>
+
+<brand_context>
+${buildBrandContextBlock(brand)}
+</brand_context>
+
+<post_context>
+- Post type: ${postType}
+- Format: ${format}
+- Layout type: ${formatLayout(format)}
+- Image style request: ${imageStyle}
+- Product visual guidance: ${getProductVisualGuidance(productType)}
+- Post copy goal: ${postTypePlaybook.copyGoal}
+- Post visual goal: ${postTypePlaybook.visualGoal}
+- Requested objective: ${preferences.objective}
+- Resolved objective: ${resolvedObjective}
+- Objective guidance: ${getObjectiveGuidance(resolvedObjective)}
+- Resolved copy approach: ${copyApproach}
+- Copy approach guidance: ${getCopyApproachGuidance(copyApproach)}
+- Resolved caption blueprint: ${captionBlueprint}
+- Caption guidance: ${getCaptionBlueprintGuidance(captionBlueprint)}
+- Resolved CTA intensity: ${ctaIntensity}
+- CTA guidance: ${getCtaGuidance(ctaIntensity)}
+- Tone guidance: ${getToneGuidance(preferences.toneOverride, brand.tone)}
+- Emoji policy: ${emojiPolicy}
+- Emoji guidance: ${getEmojiGuidance(emojiPolicy)}
+- Include text in image: ${includeText ? "yes" : "no"}
+- Extra notes from marketer: ${preferences.creativeNotes || "None"}
+- Manual angle override: ${preferences.angleOverride || "None"}
+</post_context>
+
+<asset_context>
+${assetContext.text}
+</asset_context>
+${fewShotBlock}
+<rules>
+- Think like a strategist, not a copy generator.
+${preferences.angleOverride ? `- IMPORTANT: The marketer has manually specified an angle. Use it as the angle for this post exactly as written: "${preferences.angleOverride}"` : "- The angle must feel like something a good Brazilian marketer would intentionally choose."}
+- Avoid generic AI logic, fake urgency, fake proof, and placeholder thinking.
+- If assets are attached, let them affect the strategy instead of ignoring them.
+- If the product type is food, avoid turning the concept into a sad portrait by default.
+- If include text in image is false, imageText must be an empty string.
+- If include text in image is true, imageText must be short, easy to read, and suitable for on-image typography.
+</rules>
+
+<output_format>
+Return valid JSON only with:
+- objective
+- angle
+- copyApproach
+- captionBlueprint
+- emotionalVector
+- rationale
+- imageText
+</output_format>`;
+}
+
+export function buildCopyPrompt({
+  brand,
+  postType,
+  includeText,
+  strategy,
+  marketerPreferences,
+}: {
+  brand: any;
+  postType: string;
+  includeText: boolean;
+  strategy: StrategyPlan;
+  marketerPreferences?: Partial<MarketerPreferences> | null;
+}) {
+  const preferences = normalizeMarketerPreferences(marketerPreferences);
+  const productType = normalizeProductType(brand.product_type);
+  const emojiPolicy = resolveEmojiUsage(
+    preferences.emojiUsage,
+    brand.emoji_style,
+    productType,
+  );
+  const captionBlueprint =
+    (normalizeKey(strategy.captionBlueprint) as CaptionBlueprint) || "medium";
+  const captionLimit = getCaptionCharacterLimit(captionBlueprint);
+  const hookLimit = includeText ? "max 6 words" : "max 10 words";
+  const strategyObjective =
+    (normalizeKey(strategy.objective) as Exclude<PostObjective, "auto">) ||
+    resolveObjective(preferences.objective, postType);
+
+  return `<role>
+You are a senior Brazilian copywriter focused on real social media publishing.
+</role>
+
+<goal>
+Write final PT-BR copy based on the approved strategy.
+</goal>
+
+<brand_context>
+${buildBrandContextBlock(brand)}
+</brand_context>
+
+<strategy>
+- Objective: ${strategy.objective}
+- Angle: ${strategy.angle}
+- Copy approach: ${strategy.copyApproach}
+- Caption blueprint: ${strategy.captionBlueprint}
+- Emotional vector: ${strategy.emotionalVector}
+- Rationale: ${strategy.rationale}
+- Image text: ${strategy.imageText || "None"}
+</strategy>
+
+<post_context>
+- Post type: ${postType}
+- Tone guidance: ${getToneGuidance(preferences.toneOverride, brand.tone)}
+- Emoji policy: ${emojiPolicy}
+- Emoji guidance: ${getEmojiGuidance(emojiPolicy)}
+- CTA guidance: ${getCtaGuidance(
+    resolveCtaIntensity(preferences.ctaIntensity, strategyObjective),
+  )}
+- Extra notes from marketer: ${preferences.creativeNotes || "None"}
+</post_context>
+
+<rules>
+- Write in natural PT-BR unless the brand language clearly says otherwise.
+- Do not invent prices, discounts, numbers, claims, awards, deadlines, testimonials, or guarantees.
+- Do not default to emojis or storytelling unless the strategy supports it.
+- Avoid generic AI phrases, hollow inspiration, and translated-English marketing tone.
+- Hook: ${hookLimit}.
+- Caption: max ${captionLimit} characters, with natural line breaks when helpful.
+- CTA: one short line.
+- Hashtags: 5 to 8 relevant hashtags as a single string, no emojis, no ultra-generic filler.
+- If imageText exists, keep the hook and caption coherent with it, but do not force them to be identical.
+</rules>
+
+<output_format>
+Return valid JSON only with:
+- hook
+- caption
+- cta
+- hashtags
+</output_format>`;
+}
+
+export function buildVisualBriefPrompt({
+  brand,
+  postType,
+  format,
+  imageStyle,
+  imageModelType,
+  selectedAssets,
+  strategy,
+  copy,
+}: {
+  brand: any;
+  postType: string;
+  format: string;
+  imageStyle: string;
+  imageModelType: ImageModelType;
+  selectedAssets: AssetReference[];
+  strategy: StrategyPlan;
+  copy: {
+    hook: string;
+    caption: string;
+    cta: string;
+    hashtags: string;
+  };
+}) {
   const productType = normalizeProductType(brand.product_type);
   const postTypePlaybook = getPostTypePlaybook(postType);
-  const stylePlaybook = getImageStylePlaybook(imageStyle);
-  const productVisualGuidance = getProductVisualGuidance(productType);
   const assetContext = getAssetContext(selectedAssets);
-  const normalizedPreferences =
-    normalizeMarketerPreferences(marketerPreferences);
-  const effectiveCopyApproach = resolveCopyApproach(
-    normalizedPreferences.copyApproach,
+  const styleSafetyRules = getStyleSafetyRules({
+    imageStyle,
+    productType,
     postType,
-  );
-  const effectiveCaptionStyle = resolveCaptionStyle(
-    normalizedPreferences.captionStyle,
-    postType,
-    effectiveCopyApproach,
-  );
-  const effectiveCtaIntensity = resolveCtaIntensity(
-    normalizedPreferences.ctaIntensity,
-    postType,
-  );
-  const effectiveEmojiUsage = resolveEmojiUsage(
-    normalizedPreferences.emojiUsage,
-    brand.emoji_style,
-  );
-  const copyApproachGuidance = getCopyApproachGuidance(
-    effectiveCopyApproach,
-  );
-  const copyApproachVisualGuidance = getCopyApproachVisualGuidance(
-    effectiveCopyApproach,
-  );
-  const toneGuidance = getToneGuidance(
-    normalizedPreferences.toneOverride,
-    brand.tone,
-  );
-  const emojiGuidance = getEmojiGuidance(effectiveEmojiUsage);
-  const captionGuidance = getCaptionGuidance(effectiveCaptionStyle);
-  const captionCharacterLimit = getCaptionCharacterLimit(
-    effectiveCaptionStyle,
-  );
-  const ctaGuidance = getCtaGuidance(effectiveCtaIntensity);
-  const hookRule = includeText
-    ? "max 5 words and short enough to render cleanly on-image"
-    : "max 10 words";
+  });
+  const modelRecommendation =
+    assetContext.hasAssets ? "nanoBanana" : imageModelType;
 
-  return `You are creating an Instagram post for a Brazilian brand. Return valid JSON only.
+  return `<role>
+You are a senior art director for performance creative and brand social design.
+</role>
 
-Brand kit:
-- Name: ${brand.name}
-- Product type: ${productType}
-- Tone of voice: ${brand.tone}
-- Target audience: ${brand.target_audience}
-- Value proposition: ${brand.value_proposition}
-- Key pain: ${brand.key_pain}
-- Description: ${brand.description || ""}
-- Headlines from site: ${brand.headlines || ""}
-- Body text from site: ${brand.body_text || ""}
-- Keywords: ${brand.keywords?.join(", ") || ""}
-- Primary color: ${hexToColorName(brand.primary_color)}
-- Secondary color: ${hexToColorName(brand.secondary_color)}
-- Language: ${brandLanguage}
-- Brand emoji signal from site scan: ${brand.emoji_style || "unknown"} (soft hint only)
+<goal>
+Turn the approved strategy and copy into a strong visual brief for image generation.
+</goal>
 
-Post brief:
+<brand_context>
+${buildBrandContextBlock(brand)}
+</brand_context>
+
+<strategy>
+- Objective: ${strategy.objective}
+- Angle: ${strategy.angle}
+- Emotional vector: ${strategy.emotionalVector}
+- Rationale: ${strategy.rationale}
+- Image text: ${strategy.imageText || "None"}
+</strategy>
+
+<copy>
+- Hook: ${copy.hook}
+- Caption: ${copy.caption}
+- CTA: ${copy.cta}
+</copy>
+
+<visual_context>
 - Post type: ${postType}
-- Copy goal: ${postTypePlaybook.copyGoal}
-- Visual goal: ${postTypePlaybook.visualGoal}
-- CTA style: ${postTypePlaybook.ctaStyle}
-- Post-specific visual hint: ${postVisualHint || "Adapt the composition to the post type."}
-- Image style: ${imageStyle}
-- Image style playbook: ${stylePlaybook}
-- Product visual guidance: ${productVisualGuidance}
 - Format: ${format}
-- Model family for image prompt: ${imageModelType}
+- Layout type: ${formatLayout(format)}
+- Requested style: ${imageStyle}
+- Style playbook: ${getImageStylePlaybook(imageStyle)}
+- Product visual guidance: ${getProductVisualGuidance(productType)}
+- Post visual goal: ${postTypePlaybook.visualGoal}
+- Recommended execution model: ${modelRecommendation}
+</visual_context>
 
-Marketing direction:
-- Requested copy approach: ${normalizedPreferences.copyApproach}
-- Effective copy approach for this post: ${effectiveCopyApproach}
-- Copy approach guidance: ${copyApproachGuidance}
-- Requested caption style: ${normalizedPreferences.captionStyle}
-- Effective caption style: ${effectiveCaptionStyle}
-- Caption guidance: ${captionGuidance}
-- Requested CTA intensity: ${normalizedPreferences.ctaIntensity}
-- Effective CTA intensity: ${effectiveCtaIntensity}
-- CTA guidance: ${ctaGuidance}
-- Requested tone override: ${normalizedPreferences.toneOverride}
-- Tone guidance: ${toneGuidance}
-- Requested emoji policy: ${normalizedPreferences.emojiUsage}
-- Effective emoji policy: ${effectiveEmojiUsage}
-- Emoji guidance: ${emojiGuidance}
-- Extra notes from marketer: ${normalizedPreferences.creativeNotes || "None"}
-
-Asset context:
+<asset_context>
 ${assetContext.text}
+</asset_context>
 
-Return a JSON object with:
-- hook: short first line in ${brandLanguage}, ${hookRule}
-- caption: complete caption in ${brandLanguage}, max ${captionCharacterLimit} chars, with natural line breaks
-- cta: one short CTA line in ${brandLanguage}
-- hashtags: 8 to 10 relevant hashtags as a single string
-- image_prompt: a detailed prompt in English for the image model
+<rules>
+- Think in finished social artwork, not in mockups or screenshots.
+- The piece should feel intentionally designed for a real brand, not like AI stock.
+- If assets are attached, preserve the real product identity and let the product stay recognizable.
+- If image text exists, the textTreatment must support exactly that text and keep it short and legible.
+- Never propose placeholder branding, fake website chrome, or random UI filler.
+- Avoid generic sad portraits for pain-point posts unless the marketer explicitly asked for that route.
+- Follow these safety rules:
+${styleSafetyRules.map((rule) => `- ${rule}`).join("\n")}
+</rules>
 
-Rules:
-1. The hook, caption, and CTA must sound natural for Brazilian social media unless the brand language is explicitly different.
-2. ${
-    includeText
-      ? "If typography is included, the image_prompt must instruct the image model to render exactly the same hook text you generated."
-      : "The image_prompt must explicitly forbid any text in the final image."
-  }
-3. The image_prompt must adapt the composition to the post type and style, not use a one-size-fits-all layout.
-4. The image_prompt must describe subject, composition, background, lighting, depth, and finishing details.
-5. The image must be the final post artwork, not a phone mockup, browser screenshot, or framed social preview.
-6. Avoid clipart, cartoon icons, flat generic vectors, or fake dashboard gibberish.
-7. Never include hex codes in the image_prompt.
-8. ${
-    assetContext.hasAssets && imageModelType === "nanoBanana"
-      ? "Because reference assets are attached, write image_prompt as an edit/composite instruction that preserves the real product identity from the reference images while improving scene, styling, and layout."
-      : "Write image_prompt as a text-to-image prompt."
-  }
-9. ${
-    assetContext.hasAssets
-      ? "When describing the product, use the actual product identity from the attached images instead of inventing a different item."
-      : "Invent a scene that stays faithful to the brand and product type."
-  }
-10. If includeText is true, prefer one short headline zone only. Never ask for paragraphs of text inside the image.
-11. Follow the marketer direction exactly. Do not default to storytelling, hype, or emojis unless the direction calls for it.
-12. Avoid generic AI phrasing, empty buzzwords, repeated exclamation marks, and stacked emojis.
-13. Do not invent discounts, deadlines, prices, statistics, testimonials, or guarantees unless they are present in the brand context or marketer notes.
-14. If proof is weak, keep the copy qualitative and believable instead of fabricating specifics.
-15. Let the copy approach shape the visual direction too: ${copyApproachVisualGuidance}
-16. Keep hashtags relevant to the niche and offer. Avoid ultra-generic tags like #marketing or #success unless they are genuinely useful.
-17. Do not put emojis in the hashtags string.`;
+<output_format>
+Return valid JSON only with:
+- modelRecommendation
+- visualGoal
+- composition
+- layout
+- background
+- productRole
+- textTreatment
+- avoid (array of short strings)
+</output_format>`;
+}
+
+export function buildImagePromptFromBrief({
+  brand,
+  format,
+  imageStyle,
+  imageModelType,
+  includeText,
+  selectedAssets,
+  strategy,
+  copy,
+  visualBrief,
+}: {
+  brand: any;
+  format: string;
+  imageStyle: string;
+  imageModelType: ImageModelType;
+  includeText: boolean;
+  selectedAssets: AssetReference[];
+  strategy: StrategyPlan;
+  copy: {
+    hook: string;
+    cta: string;
+  };
+  visualBrief: VisualBrief;
+}) {
+  const layout = formatLayout(format);
+  const productType = normalizeProductType(brand.product_type);
+  const exactText = includeText
+    ? quoteText(strategy.imageText || copy.hook)
+    : "";
+  const avoidList = [...visualBrief.avoid];
+  const styleSafetyRules = getStyleSafetyRules({
+    imageStyle,
+    productType,
+    postType: strategy.angle,
+  });
+
+  styleSafetyRules.forEach((rule) => {
+    if (!avoidList.includes(rule)) {
+      avoidList.push(rule);
+    }
+  });
+
+  const intro =
+    selectedAssets.length > 0 && imageModelType === "nanoBanana"
+      ? "Use the attached reference images as the source of truth for the real product. Preserve recognizable shape, materials, texture, and product identity while turning them into a finished social media artwork."
+      : "Create a finished social media artwork for Instagram, not a mockup, browser view, or photo of a screen.";
+
+  const textRule = includeText
+    ? `Render exactly this PT-BR text in the artwork: "${exactText}". Keep it bold, short, fully legible, and integrated into the design hierarchy.`
+    : "Do not render any text, letters, captions, or typography in the image.";
+
+  const prompt = `${intro}
+Layout: ${layout}.
+Visual goal: ${visualBrief.visualGoal}.
+Composition: ${visualBrief.composition}.
+Layout direction: ${visualBrief.layout}.
+Background treatment: ${visualBrief.background}.
+Product role: ${visualBrief.productRole}.
+Text treatment: ${visualBrief.textTreatment}.
+Style direction: ${getImageStylePlaybook(imageStyle)}.
+Product guidance: ${getProductVisualGuidance(productType)}.
+Brand mood: ${hexToColorName(brand.primary_color || "#000000")} and ${hexToColorName(brand.secondary_color || "#ffffff")}.
+Creative angle: ${strategy.angle}.
+Emotional vector: ${strategy.emotionalVector}.
+${textRule}
+Result must look like a real branded campaign piece ready to post.
+Avoid: ${avoidList.join(", ")}.`;
+
+  return prompt.replace(/\s+/g, " ").trim();
+}
+
+export function buildCriticPrompt({
+  brand,
+  strategy,
+  copy,
+  visualBrief,
+  imagePrompt,
+}: {
+  brand: any;
+  strategy: StrategyPlan;
+  copy: {
+    hook: string;
+    caption: string;
+    cta: string;
+    hashtags: string;
+  };
+  visualBrief: VisualBrief;
+  imagePrompt: string;
+}) {
+  return `<role>
+You are a creative director reviewing AI-generated marketing work for a Brazilian brand.
+</role>
+
+<goal>
+Score the creative package before it ships.
+</goal>
+
+<brand_context>
+${buildBrandContextBlock(brand)}
+</brand_context>
+
+<creative_package>
+- Strategy objective: ${strategy.objective}
+- Strategy angle: ${strategy.angle}
+- Strategy rationale: ${strategy.rationale}
+- Hook: ${copy.hook}
+- Caption: ${copy.caption}
+- CTA: ${copy.cta}
+- Hashtags: ${copy.hashtags}
+- Visual goal: ${visualBrief.visualGoal}
+- Composition: ${visualBrief.composition}
+- Layout: ${visualBrief.layout}
+- Background: ${visualBrief.background}
+- Product role: ${visualBrief.productRole}
+- Text treatment: ${visualBrief.textTreatment}
+- Avoid list: ${visualBrief.avoid.join(", ")}
+- Final image prompt: ${imagePrompt}
+</creative_package>
+
+<rules>
+- Give scores from 0 to 10.
+- Penalize placeholder branding, generic AI thinking, fabricated proof, weak category fit, and translated-English tone.
+- Evaluate whether this feels like something a solid Brazilian marketing team would actually publish.
+- notes must be short, practical, and in PT-BR.
+- verdict should be a short PT-BR summary.
+- recommendedFix should be the single most important fix if the piece feels weak.
+</rules>
+
+<output_format>
+Return valid JSON only with:
+- overallScore
+- brandFit
+- categoryFit
+- clarity
+- originality
+- conversionReadiness
+- aiSlopRisk
+- verdict
+- recommendedFix
+- notes
+</output_format>`;
 }
 
 export function buildRegenerationPrompt({
@@ -815,96 +1235,129 @@ export function buildRegenerationPrompt({
   includeText: boolean;
   imageModelType: ImageModelType;
   selectedAssets: AssetReference[];
-  currentContent: Record<string, string>;
+  currentContent: Record<string, any>;
   marketerPreferences?: Partial<MarketerPreferences> | null;
 }) {
-  const brandLanguage = brand.language || "pt-BR";
-  const postTypePlaybook = getPostTypePlaybook(postType);
-  const stylePlaybook = getImageStylePlaybook(imageStyle);
-  const assetContext = getAssetContext(selectedAssets);
-  const normalizedPreferences =
-    normalizeMarketerPreferences(marketerPreferences);
-  const effectiveCopyApproach = resolveCopyApproach(
-    normalizedPreferences.copyApproach,
-    postType,
-  );
-  const effectiveCaptionStyle = resolveCaptionStyle(
-    normalizedPreferences.captionStyle,
-    postType,
-    effectiveCopyApproach,
-  );
-  const effectiveCtaIntensity = resolveCtaIntensity(
-    normalizedPreferences.ctaIntensity,
-    postType,
-  );
-  const effectiveEmojiUsage = resolveEmojiUsage(
-    normalizedPreferences.emojiUsage,
+  const preferences = normalizeMarketerPreferences(marketerPreferences);
+  const resolvedObjective = resolveObjective(preferences.objective, postType);
+  const emojiPolicy = resolveEmojiUsage(
+    preferences.emojiUsage,
     brand.emoji_style,
+    brand.product_type,
   );
+  const assetContext = getAssetContext(selectedAssets);
+  const currentStrategy = currentContent.strategy
+    ? JSON.stringify(currentContent.strategy)
+    : "No structured strategy available.";
+  const currentVisualBrief = currentContent.visual_brief
+    ? JSON.stringify(currentContent.visual_brief)
+    : "No structured visual brief available.";
+  const imageText = currentContent.image_text || currentContent.hook || "";
+  const styleSafetyRules = getStyleSafetyRules({
+    imageStyle,
+    productType: brand.product_type,
+    postType,
+  });
+
   const fieldLabel: Record<string, string> = {
-    hook: `hook in ${brandLanguage}, ${includeText ? "max 5 words and image-friendly" : "max 10 words"}`,
-    caption: `caption in ${brandLanguage}, max ${getCaptionCharacterLimit(effectiveCaptionStyle)} chars`,
-    cta: `one-line CTA in ${brandLanguage}`,
-    hashtags: "8 to 10 relevant hashtags in one string, no emojis",
-    image_prompt: "image prompt in English",
+    hook: includeText ? "hook in PT-BR, max 6 words" : "hook in PT-BR, max 10 words",
+    caption: "caption in PT-BR with stronger polish and clarity",
+    cta: "one-line CTA in PT-BR",
+    hashtags: "5 to 8 relevant hashtags in one string with no emojis",
+    image_prompt: `English image prompt for the ${imageModelType} workflow`,
   };
 
-  return `You are refining one field of an Instagram post. Return valid JSON only with the key "${field}".
+  return `<role>
+You are refining one approved field of a Brazilian social post.
+</role>
 
-Current approved content:
+<goal>
+Regenerate only the requested field while keeping the rest of the creative direction coherent.
+</goal>
+
+<brand_context>
+${buildBrandContextBlock(brand)}
+</brand_context>
+
+<post_context>
+- Post type: ${postType}
+- Objective: ${resolvedObjective}
+- Format: ${format}
+- Image style: ${imageStyle}
+- Selected image workflow: ${imageModelType}
+- Tone guidance: ${getToneGuidance(preferences.toneOverride, brand.tone)}
+- Emoji policy: ${emojiPolicy}
+- CTA guidance: ${getCtaGuidance(
+    resolveCtaIntensity(preferences.ctaIntensity, resolvedObjective),
+  )}
+- Extra notes: ${preferences.creativeNotes || "None"}
+</post_context>
+
+<asset_context>
+${assetContext.text}
+</asset_context>
+
+<current_content>
 - Hook: ${currentContent.hook || ""}
 - Caption: ${currentContent.caption || ""}
 - CTA: ${currentContent.cta || ""}
 - Hashtags: ${currentContent.hashtags || ""}
+- Image text: ${imageText}
+- Current image prompt: ${currentContent.image_prompt || ""}
+- Strategy JSON: ${currentStrategy}
+- Visual brief JSON: ${currentVisualBrief}
+</current_content>
 
-Context:
-- Brand name: ${brand.name}
-- Product type: ${normalizeProductType(brand.product_type)}
-- Tone: ${brand.tone}
-- Audience: ${brand.target_audience}
-- Post type: ${postType}
-- Copy goal: ${postTypePlaybook.copyGoal}
-- Visual goal: ${postTypePlaybook.visualGoal}
-- Format: ${format}
-- Image style: ${imageStyle}
-- Style playbook: ${stylePlaybook}
-- Model family for image prompt: ${imageModelType}
-- Effective copy approach: ${effectiveCopyApproach}
-- Copy guidance: ${getCopyApproachGuidance(effectiveCopyApproach)}
-- Effective caption style: ${effectiveCaptionStyle}
-- Caption guidance: ${getCaptionGuidance(effectiveCaptionStyle)}
-- Effective CTA intensity: ${effectiveCtaIntensity}
-- CTA guidance: ${getCtaGuidance(effectiveCtaIntensity)}
-- Tone guidance: ${getToneGuidance(normalizedPreferences.toneOverride, brand.tone)}
-- Effective emoji policy: ${effectiveEmojiUsage}
-- Emoji guidance: ${getEmojiGuidance(effectiveEmojiUsage)}
-- Extra notes from marketer: ${normalizedPreferences.creativeNotes || "None"}
+<rules>
+- Return valid JSON only with the key "${field}".
+- Regenerate only the ${fieldLabel[field] || field}.
+- Keep the brand, strategy, and category fit coherent.
+- Make the new version materially different from the current one.
+- Do not invent prices, discounts, claims, fake proof, or placeholder branding.
+- If field is image_prompt and includeText is true, render exactly this text in the image: "${quoteText(
+    imageText,
+  )}".
+- If field is image_prompt and includeText is false, explicitly forbid text in the image.
+- If field is image_prompt and assets exist, preserve the real product identity from the attached references.
+- Follow these style safety rules:
+${styleSafetyRules.map((rule) => `- ${rule}`).join("\n")}
+</rules>`;
+}
 
-Asset context:
-${assetContext.text}
+export function appendPromptGuardrails({
+  prompt,
+  hook,
+  includeText,
+  language,
+  imageModelType,
+  hasAssets,
+}: {
+  prompt: string;
+  hook: string;
+  includeText: boolean;
+  language: string;
+  imageModelType: ImageModelType;
+  hasAssets: boolean;
+}) {
+  const cleanedPrompt = prompt.trim();
+  const guardrails: string[] = [
+    "Final output must look like finished marketing creative, not a mockup, browser screenshot, or social preview.",
+    "Avoid placeholder branding, fake UI, stock-photo emotion, clipart, unreadable typography, and generic AI aesthetics.",
+  ];
 
-Regenerate only the ${fieldLabel[field] || field}.
-
-Rules:
-1. Keep the brand and post strategy consistent.
-2. Make it materially different from the current version.
-3. Respect the marketer direction. Do not suddenly add emojis, hype, or narrative fluff if the strategy does not call for it.
-4. Do not invent concrete offers, prices, deadlines, results, or testimonials that are not in the context.
-5. ${
-    field === "image_prompt"
-      ? includeText
-        ? `The new image_prompt must explicitly render the exact approved hook text "${currentContent.hook || ""}" and keep it short and legible.`
-        : "The new image_prompt must explicitly forbid any text in the final image."
-      : "Do not change the other fields."
+  if (includeText && hook.trim()) {
+    guardrails.push(
+      `Render exactly this text in ${language}: "${hook.trim()}". Keep it short, bold, and fully legible.`,
+    );
+  } else {
+    guardrails.push("Do not include any text or letters in the final image.");
   }
-6. ${
-    field === "image_prompt" && assetContext.hasAssets && imageModelType === "nanoBanana"
-      ? "Because reference assets are attached, write the new image_prompt as an edit/composite instruction that preserves the real product identity from the attached images."
-      : "Keep the output grounded in the same brand context."
+
+  if (hasAssets && imageModelType === "nanoBanana") {
+    guardrails.push(
+      "Use the attached assets as the source of truth for the real product and preserve their identity while improving the layout.",
+    );
   }
-7. ${
-    field === "image_prompt"
-      ? `Let the copy approach shape the visual direction too: ${getCopyApproachVisualGuidance(effectiveCopyApproach)}`
-      : "Keep the regenerated field aligned with the same strategic angle."
-  }`;
+
+  return `${cleanedPrompt}\n\nGuardrails:\n- ${guardrails.join("\n- ")}`;
 }

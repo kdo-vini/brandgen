@@ -113,6 +113,8 @@ export default function AssetUploader({ user, brandId }: Props) {
             <option value="product_photo">Produto</option>
             <option value="reference">Referencia</option>
             <option value="logo">Logo</option>
+            <option value="packaging">Embalagem</option>
+            <option value="environment">Ambiente</option>
           </select>
           <label className="inline-flex items-center px-3 py-1.5 border border-neutral-300 rounded-lg text-xs font-medium text-neutral-700 bg-white hover:bg-neutral-50 cursor-pointer transition-colors">
             {uploading ? (

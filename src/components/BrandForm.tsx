@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Loader2, Wand2, Link as LinkIcon, Save, ArrowLeft } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Loader2, Wand2, Link as LinkIcon, Save, ArrowLeft, Upload, Instagram, Globe, ImageIcon } from 'lucide-react';
 import { motion } from 'motion/react';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
@@ -16,13 +16,7 @@ type Props = {
   onSuccess?: (msg: string) => void;
 };
 
-const productTypeLabels: Record<string, string> = {
-  saas: 'SaaS / Sistema',
-  ecommerce: 'E-commerce / Loja',
-  food: 'Alimentação / Gastronomia',
-  service: 'Serviço / Consultoria',
-  other: 'Outro'
-};
+type ScanMode = 'url' | 'instagram';
 
 const toneLabels: Record<string, string> = {
   formal: 'Formal',
@@ -43,23 +37,61 @@ const emojiStyleLabels: Record<string, string> = {
   heavy: 'Muitos emojis'
 };
 
-const productTypes = Object.keys(productTypeLabels);
 const tones = Object.keys(toneLabels);
 const languages = Object.keys(languageLabels);
 const emojiStyles = Object.keys(emojiStyleLabels);
 
-const loadingSteps = [
+const urlLoadingSteps = [
   'Abrindo o site... 🌐',
   'Lendo as cores e textos... 🎨',
   'A IA tá analisando sua marca... 🤖',
   'Quase lá, só um instante... ✨',
 ];
 
+const igLoadingSteps = [
+  'Lendo a imagem... 📸',
+  'Extraindo as cores... 🎨',
+  'A IA tá analisando o perfil... 🤖',
+  'Quase pronto! ✨',
+];
+
+function normalizeBrandUrl(rawUrl: string) {
+  const trimmedUrl = rawUrl.trim();
+  if (!trimmedUrl) return '';
+  if (trimmedUrl.startsWith('http://') || trimmedUrl.startsWith('https://')) return trimmedUrl;
+  return `https://${trimmedUrl}`;
+}
+
+function parseKeywords(value: string) {
+  return value.split(',').map(keyword => keyword.trim()).filter(Boolean);
+}
+
+async function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve((reader.result as string).split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function BrandForm({ user, existingBrand, initialUrl, onSaved, onCancel, onError, onSuccess }: Props) {
+  const [scanMode, setScanMode] = useState<ScanMode>('url');
   const [url, setUrl] = useState(existingBrand?.url || initialUrl || '');
   const [loadingStep, setLoadingStep] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
+  // Instagram screenshot
+  const [igFile, setIgFile] = useState<File | null>(null);
+  const [igPreview, setIgPreview] = useState<string | null>(null);
+  const igInputRef = useRef<HTMLInputElement>(null);
+
+  // Logo upload
+  const [logoUploadPreview, setLogoUploadPreview] = useState<string | null>(null);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+
+  // Form fields
   const [name, setName] = useState(existingBrand?.name || '');
   const [instagramHandle, setInstagramHandle] = useState(existingBrand?.instagram_handle || '');
   const [logoUrl, setLogoUrl] = useState(existingBrand?.logo_url || '');
@@ -71,6 +103,8 @@ export default function BrandForm({ user, existingBrand, initialUrl, onSaved, on
   const [targetAudience, setTargetAudience] = useState(existingBrand?.target_audience || '');
   const [valueProposition, setValueProposition] = useState(existingBrand?.value_proposition || '');
   const [keyPain, setKeyPain] = useState(existingBrand?.key_pain || '');
+  const [provaDisponivel, setProvaDisponivel] = useState(existingBrand?.prova_disponivel || '');
+  const [claimRestrictions, setClaimRestrictions] = useState(existingBrand?.claim_restrictions || '');
   const [productType, setProductType] = useState(normalizeProductType(existingBrand?.product_type || 'saas'));
   const [language, setLanguage] = useState(existingBrand?.language || 'pt-BR');
   const [emojiStyle, setEmojiStyle] = useState(existingBrand?.emoji_style || 'moderate');
@@ -80,28 +114,69 @@ export default function BrandForm({ user, existingBrand, initialUrl, onSaved, on
   const [bodyText, setBodyText] = useState<string | null>(existingBrand?.body_text || null);
   const [rawScanData, setRawScanData] = useState<Record<string, unknown> | null>(existingBrand?.raw_scan_data || null);
 
+  // Initialize logo preview from existing brand
+  useEffect(() => {
+    if (existingBrand?.logo_url) setLogoUploadPreview(existingBrand.logo_url);
+  }, []);
+
+  const applyScanResults = (scraped: ScrapeResult, analysis: GeminiAnalysis) => {
+    setName(analysis.brand_name || scraped.title || '');
+    setLogoUrl(scraped.logo_url || '');
+    if (scraped.logo_url) setLogoUploadPreview(scraped.logo_url);
+    setPrimaryColor(scraped.primary_color || '#000000');
+    setSecondaryColor(scraped.secondary_color || '#ffffff');
+    setColors(scraped.colors || []);
+    setTone(analysis.tone || 'casual');
+    setTargetAudience(analysis.target_audience || '');
+    setValueProposition(analysis.value_proposition || '');
+    setKeyPain(analysis.key_pain || '');
+    setProductType(normalizeProductType(analysis.product_type));
+    setLanguage(analysis.language || 'pt-BR');
+    setEmojiStyle(analysis.emoji_style || 'moderate');
+    setDescription(scraped.description || '');
+    setHeadlines(scraped.headlines || null);
+    setBodyText(scraped.body_text || null);
+    setRawScanData(scraped);
+  };
+
+  const applyInstagramResults = (data: GeminiAnalysis & {
+    colors?: string[];
+    primary_color?: string;
+    secondary_color?: string;
+    description?: string;
+    keywords?: string[];
+  }) => {
+    setName(data.brand_name || '');
+    setTone(data.tone || 'casual');
+    setTargetAudience(data.target_audience || '');
+    setValueProposition(data.value_proposition || '');
+    setKeyPain(data.key_pain || '');
+    setProductType(normalizeProductType(data.product_type));
+    setLanguage(data.language || 'pt-BR');
+    setEmojiStyle(data.emoji_style || 'moderate');
+    if (data.description) setDescription(data.description);
+    if (data.keywords?.length) setKeywords(data.keywords.join(', '));
+    if (data.colors?.length) setColors(data.colors);
+    if (data.primary_color) setPrimaryColor(data.primary_color);
+    if (data.secondary_color) setSecondaryColor(data.secondary_color);
+  };
+
   const handleScan = async (urlOverride?: string | null) => {
     const rawTargetUrl = typeof urlOverride === 'string' ? urlOverride : url;
-    const targetUrl = rawTargetUrl.trim();
+    const targetUrl = normalizeBrandUrl(rawTargetUrl);
     if (!targetUrl) {
       onError?.('Opa, cola uma URL aí primeiro! 👆');
       return;
     }
 
-    let formattedUrl = targetUrl;
-    if (!formattedUrl.startsWith('http://') && !formattedUrl.startsWith('https://')) {
-      formattedUrl = 'https://' + formattedUrl;
-    }
-    setUrl(formattedUrl);
-
-    setLoadingStep(loadingSteps[0]);
+    setUrl(targetUrl);
+    setLoadingStep(urlLoadingSteps[0]);
 
     try {
-      // Step 1: Scrape
       const scrapeRes = await fetch('/api/scrape', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: formattedUrl })
+        body: JSON.stringify({ url: targetUrl })
       });
 
       if (!scrapeRes.ok) {
@@ -112,10 +187,9 @@ export default function BrandForm({ user, existingBrand, initialUrl, onSaved, on
       const scraped: ScrapeResult = await scrapeRes.json();
 
       await new Promise(resolve => setTimeout(resolve, 300));
-      setLoadingStep(loadingSteps[1]);
+      setLoadingStep(urlLoadingSteps[1]);
+      setLoadingStep(urlLoadingSteps[2]);
 
-      // Step 2: Analyze with /api/analyze
-      setLoadingStep(loadingSteps[2]);
       const analyzeRes = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -128,7 +202,6 @@ export default function BrandForm({ user, existingBrand, initialUrl, onSaved, on
           const errData = await analyzeRes.json();
           errorMsg = errData.error || errorMsg;
         } catch (e) {
-          // Fallback se não for JSON
           console.error('Erro ao ler resposta de erro:', e);
         }
         throw new Error(errorMsg);
@@ -136,28 +209,11 @@ export default function BrandForm({ user, existingBrand, initialUrl, onSaved, on
 
       const analysis: GeminiAnalysis = await analyzeRes.json();
 
-      setLoadingStep(loadingSteps[3]);
-
-      // Fill form with scan results
-      setName(analysis.brand_name || scraped.title || '');
-      setLogoUrl(scraped.logo_url || '');
-      setPrimaryColor(scraped.primary_color || '#000000');
-      setSecondaryColor(scraped.secondary_color || '#ffffff');
-      setColors(scraped.colors || []);
-      setTone(analysis.tone || 'casual');
-      setTargetAudience(analysis.target_audience || '');
-      setValueProposition(analysis.value_proposition || '');
-      setKeyPain(analysis.key_pain || '');
-      setProductType(normalizeProductType(analysis.product_type));
-      setLanguage(analysis.language || 'pt-BR');
-      setEmojiStyle(analysis.emoji_style || 'moderate');
-      setDescription(scraped.description || '');
-      setHeadlines(scraped.headlines || null);
-      setBodyText(scraped.body_text || null);
-      setRawScanData(scraped);
+      setLoadingStep(urlLoadingSteps[3]);
+      applyScanResults(scraped, analysis);
 
       await new Promise(resolve => setTimeout(resolve, 500));
-
+      onSuccess?.('Marca analisada! Confere os campos abaixo 👇');
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Ih, travou! Tenta de novo? 🔄';
       onError?.(message);
@@ -166,10 +222,98 @@ export default function BrandForm({ user, existingBrand, initialUrl, onSaved, on
     }
   };
 
+  const handleInstagramScan = async () => {
+    if (!igFile) {
+      onError?.('Sobe o print do perfil primeiro! 📸');
+      return;
+    }
+
+    setLoadingStep(igLoadingSteps[0]);
+
+    try {
+      const base64 = await fileToBase64(igFile);
+      const mimeType = igFile.type || 'image/jpeg';
+
+      setLoadingStep(igLoadingSteps[1]);
+
+      const res = await fetch('/api/analyze-instagram', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64: base64, mimeType }),
+      });
+
+      setLoadingStep(igLoadingSteps[2]);
+
+      if (!res.ok) {
+        let errorMsg = 'Não consegui analisar a imagem 😕 Tenta de novo?';
+        try {
+          const errData = await res.json();
+          errorMsg = errData.error || errorMsg;
+        } catch {
+          // resposta não-JSON (HTML de erro do servidor)
+        }
+        throw new Error(errorMsg);
+      }
+
+      const data = await res.json();
+
+      setLoadingStep(igLoadingSteps[3]);
+      applyInstagramResults(data);
+
+      await new Promise(resolve => setTimeout(resolve, 400));
+      onSuccess?.('Perfil analisado! Confere os campos abaixo 👇');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Ih, travou! Tenta de novo? 🔄';
+      onError?.(message);
+    } finally {
+      setLoadingStep(null);
+    }
+  };
+
+  const handleIgFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIgFile(file);
+    setIgPreview(URL.createObjectURL(file));
+    if (igInputRef.current) igInputRef.current.value = '';
+  };
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setLogoUploadPreview(URL.createObjectURL(file));
+    setIsUploadingLogo(true);
+
+    try {
+      const fileExt = file.name.split('.').pop();
+      const filePath = `logos/${user.id}/${Date.now()}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('brand-assets')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: urlData } = supabase.storage
+        .from('brand-assets')
+        .getPublicUrl(filePath);
+
+      setLogoUrl(urlData.publicUrl);
+      onSuccess?.('Logo enviado! 🎨');
+    } catch (err: unknown) {
+      onError?.(err instanceof Error ? err.message : 'Erro ao enviar logo');
+      setLogoUploadPreview(null);
+    } finally {
+      setIsUploadingLogo(false);
+      if (logoInputRef.current) logoInputRef.current.value = '';
+    }
+  };
+
   // Auto-trigger scan when arriving from onboarding with a pre-filled URL
   useEffect(() => {
     if (initialUrl && !existingBrand) {
-      handleScan(initialUrl);
+      void handleScan(initialUrl);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -195,10 +339,12 @@ export default function BrandForm({ user, existingBrand, initialUrl, onSaved, on
       target_audience: targetAudience || null,
       value_proposition: valueProposition || null,
       key_pain: keyPain || null,
+      prova_disponivel: provaDisponivel || null,
+      claim_restrictions: claimRestrictions || null,
       product_type: normalizeProductType(productType),
       language,
       emoji_style: emojiStyle,
-      keywords: keywords.split(',').map(k => k.trim()).filter(Boolean),
+      keywords: parseKeywords(keywords),
       description: description || null,
       headlines,
       body_text: bodyText,
@@ -207,29 +353,18 @@ export default function BrandForm({ user, existingBrand, initialUrl, onSaved, on
     };
 
     try {
-      if (existingBrand) {
-        const { data, error: dbError } = await supabase
-          .from('brands')
-          .update(brandData)
-          .eq('id', existingBrand.id)
-          .select()
-          .single();
+      const brandMutation = existingBrand
+        ? supabase.from('brands').update(brandData).eq('id', existingBrand.id)
+        : supabase.from('brands').insert(brandData);
 
-        if (dbError) throw dbError;
-        onSuccess?.('Marca salva! Arrasou 🎉');
-        onSaved(data as Brand);
-      } else {
-        const { data, error: dbError } = await supabase
-          .from('brands')
-          .insert(brandData)
-          .select()
-          .single();
+      const { data, error: dbError } = await brandMutation.select().single();
 
-        if (dbError) throw dbError;
-        onSuccess?.('Marca salva! Arrasou 🎉');
-        onSaved(data as Brand);
-      }
+      if (dbError) throw dbError;
+
+      onSuccess?.('Marca salva! Arrasou 🎉');
+      onSaved(data as Brand);
     } catch (err: unknown) {
+      console.error('[BrandForm] Erro ao salvar marca:', err);
       onError?.('Deu ruim ao salvar 😬 Tenta mais uma vez?');
     } finally {
       setIsSaving(false);
@@ -251,38 +386,149 @@ export default function BrandForm({ user, existingBrand, initialUrl, onSaved, on
         </h2>
       </div>
 
-      {/* Auto-scan section */}
+      {/* Scan mode selector + panel */}
       <div className="bg-white rounded-xl border border-neutral-200 p-6 mb-6">
-        <h3 className="text-sm font-semibold text-neutral-700 mb-3">Análise automática ✨</h3>
-        <div className="flex gap-3">
-          <div className="relative flex-1">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <LinkIcon className="h-4 w-4 text-neutral-400" />
-            </div>
-            <input
-              type="url"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://suamarca.com.br"
-              className="block w-full pl-10 pr-3 py-2 border border-neutral-300 rounded-lg focus:ring-[#FF6B35] focus:border-[#FF6B35] sm:text-sm"
-            />
-          </div>
-          <motion.button
-            whileTap={{ scale: 0.97 }}
-            onClick={() => { void handleScan(); }}
-            disabled={!!loadingStep || !url}
-            className="inline-flex items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-[#FF6B35] hover:bg-[#E55A28] disabled:opacity-50 transition-colors"
+        <h3 className="text-sm font-semibold text-neutral-700 mb-4">Como você quer começar? ✨</h3>
+
+        {/* Mode tabs */}
+        <div className="grid grid-cols-2 gap-3 mb-5">
+          <button
+            type="button"
+            onClick={() => setScanMode('url')}
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl border-2 text-left transition-all ${
+              scanMode === 'url'
+                ? 'border-[#FF6B35] bg-[#FFF1EB] text-[#FF6B35]'
+                : 'border-neutral-200 text-neutral-500 hover:border-neutral-300 hover:bg-neutral-50'
+            }`}
           >
-            {loadingStep ? (
-              <><Loader2 className="animate-spin mr-2 h-4 w-4" /> {loadingStep}</>
-            ) : (
-              <><Wand2 className="mr-2 h-4 w-4" /> Analisar site</>
-            )}
-          </motion.button>
+            <Globe className={`h-5 w-5 shrink-0 ${scanMode === 'url' ? 'text-[#FF6B35]' : 'text-neutral-400'}`} />
+            <div>
+              <p className="text-sm font-semibold">Site da marca</p>
+              <p className="text-xs opacity-70">Cola a URL e a IA analisa tudo</p>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setScanMode('instagram')}
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl border-2 text-left transition-all ${
+              scanMode === 'instagram'
+                ? 'border-[#FF6B35] bg-[#FFF1EB] text-[#FF6B35]'
+                : 'border-neutral-200 text-neutral-500 hover:border-neutral-300 hover:bg-neutral-50'
+            }`}
+          >
+            <Instagram className={`h-5 w-5 shrink-0 ${scanMode === 'instagram' ? 'text-[#FF6B35]' : 'text-neutral-400'}`} />
+            <div>
+              <p className="text-sm font-semibold">Print do Instagram</p>
+              <p className="text-xs opacity-70">Sobe um print do perfil e pronto</p>
+            </div>
+          </button>
         </div>
-        <p className="text-xs text-neutral-400 mt-2">
-          Cola o link do site e a gente faz a mágica. Você ajusta o que quiser depois 😉
-        </p>
+
+        {/* URL panel */}
+        {scanMode === 'url' && (
+          <div>
+            <div className="flex gap-3">
+              <div className="relative flex-1">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <LinkIcon className="h-4 w-4 text-neutral-400" />
+                </div>
+                <input
+                  type="url"
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  placeholder="https://suamarca.com.br"
+                  className="block w-full pl-10 pr-3 py-2 border border-neutral-300 rounded-lg focus:ring-[#FF6B35] focus:border-[#FF6B35] sm:text-sm"
+                />
+              </div>
+              <motion.button
+                whileTap={{ scale: 0.97 }}
+                onClick={() => { void handleScan(); }}
+                disabled={!!loadingStep || !url}
+                className="inline-flex items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-[#FF6B35] hover:bg-[#E55A28] disabled:opacity-50 transition-colors whitespace-nowrap"
+              >
+                {loadingStep ? (
+                  <><Loader2 className="animate-spin mr-2 h-4 w-4" /> {loadingStep}</>
+                ) : (
+                  <><Wand2 className="mr-2 h-4 w-4" /> Analisar site</>
+                )}
+              </motion.button>
+            </div>
+            <p className="text-xs text-neutral-400 mt-2">
+              Cola o link do site e a gente faz a mágica. Você ajusta o que quiser depois 😉
+            </p>
+          </div>
+        )}
+
+        {/* Instagram panel */}
+        {scanMode === 'instagram' && (
+          <div>
+            <input
+              ref={igInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleIgFileSelect}
+            />
+
+            {!igFile ? (
+              <button
+                type="button"
+                onClick={() => igInputRef.current?.click()}
+                className="w-full flex flex-col items-center justify-center gap-2 px-4 py-8 border-2 border-dashed border-neutral-300 rounded-xl text-neutral-400 hover:border-[#FF6B35] hover:text-[#FF6B35] hover:bg-[#FFF1EB] transition-all"
+              >
+                <Upload className="h-8 w-8" />
+                <span className="text-sm font-medium">Clica pra subir o print do perfil</span>
+                <span className="text-xs">PNG, JPG — qualquer screenshot serve</span>
+              </button>
+            ) : (
+              <div className="flex gap-4 items-start">
+                <div className="relative">
+                  <img
+                    src={igPreview!}
+                    alt="Print do Instagram"
+                    className="h-32 w-auto rounded-lg border border-neutral-200 object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => { setIgFile(null); setIgPreview(null); }}
+                    className="absolute -top-2 -right-2 bg-white border border-neutral-200 rounded-full p-0.5 text-neutral-400 hover:text-red-500 transition-colors text-xs leading-none"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm text-neutral-600 mb-3">
+                    Print carregado! Bora analisar? 🚀
+                  </p>
+                  <motion.button
+                    whileTap={{ scale: 0.97 }}
+                    onClick={() => { void handleInstagramScan(); }}
+                    disabled={!!loadingStep}
+                    className="inline-flex items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-[#FF6B35] hover:bg-[#E55A28] disabled:opacity-50 transition-colors"
+                  >
+                    {loadingStep ? (
+                      <><Loader2 className="animate-spin mr-2 h-4 w-4" /> {loadingStep}</>
+                    ) : (
+                      <><Wand2 className="mr-2 h-4 w-4" /> Analisar perfil</>
+                    )}
+                  </motion.button>
+                  <button
+                    type="button"
+                    onClick={() => igInputRef.current?.click()}
+                    className="mt-2 block text-xs text-neutral-400 hover:text-neutral-600 transition-colors"
+                  >
+                    Trocar imagem
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <p className="text-xs text-neutral-400 mt-3">
+              Tira um print completo do perfil no Instagram — bio, foto de capa e alguns posts aparecem pra IA analisar melhor 📱
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Manual form */}
@@ -363,9 +609,86 @@ export default function BrandForm({ user, existingBrand, initialUrl, onSaved, on
           </div>
         </div>
 
+        {/* Logo upload */}
+        <div>
+          <label className="block text-sm font-medium text-neutral-700 mb-1">Logo da marca</label>
+          <p className="text-xs text-neutral-400 mb-3">
+            Sobe o logo aqui e a IA vai usá-lo nas imagens geradas 🎨
+          </p>
+          <input
+            ref={logoInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleLogoUpload}
+          />
+          <div className="flex items-center gap-4 flex-wrap">
+            <motion.button
+              whileTap={{ scale: 0.97 }}
+              type="button"
+              onClick={() => logoInputRef.current?.click()}
+              disabled={isUploadingLogo}
+              className="inline-flex items-center px-4 py-2 border border-[#FF6B35] rounded-lg text-sm font-medium text-[#FF6B35] hover:bg-[#FFF1EB] disabled:opacity-50 transition-colors"
+            >
+              {isUploadingLogo ? (
+                <><Loader2 className="animate-spin mr-2 h-4 w-4" /> Enviando...</>
+              ) : (
+                <><ImageIcon className="mr-2 h-4 w-4" /> {logoUploadPreview ? 'Trocar logo' : 'Upload do logo'}</>
+              )}
+            </motion.button>
+            {logoUploadPreview && (
+              <img
+                src={logoUploadPreview}
+                alt="Logo preview"
+                className="h-12 object-contain rounded border border-neutral-200 bg-neutral-50 p-1"
+              />
+            )}
+          </div>
+        </div>
+
         {/* Colors */}
         <div>
           <label className="block text-sm font-medium text-neutral-700 mb-2">Cores da marca</label>
+
+          {colors.length > 0 && (
+            <div className="mb-4 p-3 bg-[#FFF8F0] rounded-lg border border-[#FFD166]/40">
+              <p className="text-xs text-neutral-500 mb-2 font-medium">
+                Paleta extraída — clica P / S / D para atribuir
+              </p>
+              <div className="flex flex-wrap gap-3">
+                {colors.map((c, i) => (
+                  <div key={i} className="flex flex-col items-center gap-1">
+                    <div
+                      className="w-9 h-9 rounded-lg border-2 border-white shadow-sm"
+                      style={{ backgroundColor: c }}
+                      title={c}
+                    />
+                    <div className="flex gap-0.5">
+                      <button
+                        type="button"
+                        onClick={() => setPrimaryColor(c)}
+                        className="text-[9px] font-bold px-1 py-0.5 rounded bg-neutral-200 hover:bg-[#FF6B35] hover:text-white transition-colors"
+                        title={`Usar ${c} como principal`}
+                      >P</button>
+                      <button
+                        type="button"
+                        onClick={() => setSecondaryColor(c)}
+                        className="text-[9px] font-bold px-1 py-0.5 rounded bg-neutral-200 hover:bg-[#1A1A2E] hover:text-white transition-colors"
+                        title={`Usar ${c} como secundária`}
+                      >S</button>
+                      <button
+                        type="button"
+                        onClick={() => setAccentColor(c)}
+                        className="text-[9px] font-bold px-1 py-0.5 rounded bg-neutral-200 hover:bg-[#FFD166] transition-colors"
+                        title={`Usar ${c} como destaque`}
+                      >D</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="flex items-center gap-6 flex-wrap">
             <div className="flex items-center gap-2">
               <label className="text-xs text-neutral-500">Principal</label>
@@ -398,29 +721,6 @@ export default function BrandForm({ user, existingBrand, initialUrl, onSaved, on
               <span className="text-xs text-neutral-400 font-mono">{accentColor || '—'}</span>
             </div>
           </div>
-          {colors.length > 0 && (
-            <div className="flex gap-1.5 mt-3 items-center">
-              {colors.map((c, i) => (
-                <div key={i} className="w-6 h-6 rounded-full border border-neutral-200" style={{ backgroundColor: c }} title={c} />
-              ))}
-              <span className="text-xs text-neutral-400 ml-2">Paleta extraída do site</span>
-            </div>
-          )}
-        </div>
-
-        {/* Logo URL */}
-        <div>
-          <label className="block text-sm font-medium text-neutral-700 mb-1">URL do logo</label>
-          <input
-            type="url"
-            value={logoUrl}
-            onChange={(e) => setLogoUrl(e.target.value)}
-            placeholder="https://exemplo.com/logo.png"
-            className="block w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-[#FF6B35] focus:border-[#FF6B35] sm:text-sm"
-          />
-          {logoUrl && (
-            <img src={logoUrl} alt="Logo preview" className="mt-2 h-12 object-contain" />
-          )}
         </div>
 
         {/* Text fields */}
@@ -452,6 +752,28 @@ export default function BrandForm({ user, existingBrand, initialUrl, onSaved, on
             value={keyPain}
             onChange={(e) => setKeyPain(e.target.value)}
             placeholder="Qual problema você resolve?"
+            rows={2}
+            className="block w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-[#FF6B35] focus:border-[#FF6B35] sm:text-sm"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-neutral-700 mb-1">Provas disponíveis</label>
+          <textarea
+            value={provaDisponivel}
+            onChange={(e) => setProvaDisponivel(e.target.value)}
+            placeholder="Ex: 500 clientes ativos, prêmio X de 2023, 4 anos no mercado"
+            rows={2}
+            className="block w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-[#FF6B35] focus:border-[#FF6B35] sm:text-sm"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-neutral-700 mb-1">O que a IA não pode inventar</label>
+          <textarea
+            value={claimRestrictions}
+            onChange={(e) => setClaimRestrictions(e.target.value)}
+            placeholder="Ex: não temos desconto fixo, preço varia por projeto, não divulgamos número de clientes"
             rows={2}
             className="block w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-[#FF6B35] focus:border-[#FF6B35] sm:text-sm"
           />

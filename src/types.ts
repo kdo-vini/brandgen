@@ -13,6 +13,8 @@ export type Brand = {
   target_audience: string | null;
   value_proposition: string | null;
   key_pain: string | null;
+  prova_disponivel: string | null;
+  claim_restrictions: string | null;
   product_type: string | null;
   language: string;
   emoji_style: string;
@@ -31,7 +33,7 @@ export type BrandAsset = {
   id: string;
   user_id?: string;
   brand_id: string;
-  type: 'product_photo' | 'reference' | 'logo';
+  type: 'product_photo' | 'reference' | 'logo' | 'packaging' | 'environment';
   url: string;
   filename: string | null;
   metadata: Record<string, unknown> | null;
@@ -43,6 +45,7 @@ export type GeneratedPost = {
   user_id?: string;
   brand_id: string;
   post_type: string;
+  objective?: string | null;
   format: string;
   image_style: string | null;
   aspect_ratio: string | null;
@@ -52,10 +55,57 @@ export type GeneratedPost = {
   caption: string | null;
   cta: string | null;
   hashtags: string | null;
+  image_text?: string | null;
   image_prompt: string | null;
   image_url: string | null;
   typographic_card_url: string | null;
+  strategy_json?: StrategyInsight | null;
+  copy_json?: Record<string, unknown> | null;
+  visual_brief_json?: VisualBrief | null;
+  critic_json?: CreativeCritic | null;
+  selected_asset_ids?: string[] | null;
+  generation_mode?: string | null;
+  prompt_version_strategy?: string | null;
+  prompt_version_copy?: string | null;
+  prompt_version_visual?: string | null;
+  prompt_version_critic?: string | null;
+  human_edits_json?: Record<string, { original: string; edited: string; editedAt: string }> | null;
+  regeneration_counts_json?: Record<string, number> | null;
   created_at: string;
+};
+
+export type StrategyInsight = {
+  objective: string;
+  angle: string;
+  copyApproach: string;
+  captionBlueprint: string;
+  emotionalVector: string;
+  rationale: string;
+  imageText: string;
+};
+
+export type VisualBrief = {
+  modelRecommendation: "imagen" | "nanoBanana";
+  visualGoal: string;
+  composition: string;
+  layout: string;
+  background: string;
+  productRole: string;
+  textTreatment: string;
+  avoid: string[];
+};
+
+export type CreativeCritic = {
+  overallScore: number;
+  brandFit: number;
+  categoryFit: number;
+  clarity: number;
+  originality: number;
+  conversionReadiness: number;
+  aiSlopRisk: number;
+  verdict: string;
+  recommendedFix: string;
+  notes: string[];
 };
 
 export type GeneratedContent = {
@@ -63,7 +113,12 @@ export type GeneratedContent = {
   caption: string;
   cta: string;
   hashtags: string;
+  image_text?: string;
   image_prompt: string;
+  strategy?: StrategyInsight | null;
+  visual_brief?: VisualBrief | null;
+  critic?: CreativeCritic | null;
+  prompt_versions?: Record<string, string> | null;
 };
 
 export type ScrapeResult = {
