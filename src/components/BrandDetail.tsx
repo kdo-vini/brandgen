@@ -248,6 +248,8 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
   const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const [generationProgress, setGenerationProgress] = useState(0);
+  const [generationStep, setGenerationStep] = useState('');
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [isRescanning, setIsRescanning] = useState(false);
   const [editablePrompt, setEditablePrompt] = useState('');
@@ -441,6 +443,47 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
       return [...prev, assetId];
     });
   };
+
+  const GENERATION_STAGES = [
+    { pct: 12, msg: 'Estudando sua marca... 🧠',              delay: 800 },
+    { pct: 28, msg: 'Definindo o ângulo do post... 💡',       delay: 4500 },
+    { pct: 48, msg: 'Escrevendo o copy... ✍️',               delay: 10000 },
+    { pct: 65, msg: 'Construindo o brief visual... 🎨',       delay: 16000 },
+    { pct: 82, msg: 'O crítico tá avaliando o conteúdo... 🔍', delay: 22000 },
+    { pct: 92, msg: 'Finalizando os detalhes... ⚡',           delay: 28000 },
+    { pct: 97, msg: 'Quase lá, segura mais um segundo... 🙏', delay: 35000 },
+  ];
+
+  useEffect(() => {
+    if (!isGenerating) {
+      setGenerationProgress(0);
+      setGenerationStep('');
+      return;
+    }
+    setGenerationProgress(0);
+    setGenerationStep(GENERATION_STAGES[0].msg);
+
+    const timers = GENERATION_STAGES.map(({ pct, msg, delay }) =>
+      setTimeout(() => {
+        setGenerationProgress(pct);
+        setGenerationStep(msg);
+      }, delay)
+    );
+
+    // Lógica para que a barra não pare completamente se demorar mais que o previsto
+    const creepInterval = setInterval(() => {
+      setGenerationProgress(prev => {
+        if (prev >= 99) return 99;
+        if (prev >= 97) return prev + 0.1; // Sobe bem devagarzinho no final
+        return prev;
+      });
+    }, 1000);
+
+    return () => {
+      timers.forEach(clearTimeout);
+      clearInterval(creepInterval);
+    };
+  }, [isGenerating]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleRescan = async () => {
     if (!brand.url) return;
@@ -1123,18 +1166,29 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
                 )}
               </div>
 
-              <motion.button
-                whileTap={{ scale: 0.97 }}
-                onClick={handleGenerateContent}
-                disabled={isGenerating}
-                className="w-full flex justify-center items-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-neutral-900 hover:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-neutral-900 disabled:opacity-50 transition-colors"
-              >
-                {isGenerating ? (
-                  <><Loader2 className="animate-spin -ml-1 mr-2 h-4 w-4" /> Gerando conteudo...</>
-                ) : (
-                  <><Wand2 className="-ml-1 mr-2 h-4 w-4" /> Criar conteudo</>
-                )}
-              </motion.button>
+              {isGenerating ? (
+                <div className="w-full rounded-lg overflow-hidden bg-neutral-100">
+                  <div className="flex items-center justify-between px-3 py-2">
+                    <span className="text-xs text-neutral-500 truncate">{generationStep}</span>
+                    <span className="text-xs font-mono font-semibold text-[#FF6B35] ml-2 shrink-0">{generationProgress}%</span>
+                  </div>
+                  <div className="h-1.5 bg-neutral-200">
+                    <motion.div
+                      className="h-full bg-[#FF6B35]"
+                      animate={{ width: `${generationProgress}%` }}
+                      transition={{ duration: 0.8, ease: 'easeOut' }}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <motion.button
+                  whileTap={{ scale: 0.97 }}
+                  onClick={handleGenerateContent}
+                  className="w-full flex justify-center items-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-neutral-900 hover:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-neutral-900 transition-colors"
+                >
+                  <Wand2 className="-ml-1 mr-2 h-4 w-4" /> Criar conteudo
+                </motion.button>
+              )}
             </div>
           </div>
 
@@ -1476,6 +1530,40 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
                 </div>
               )}
             </div>
+
+            {isGenerating && (
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="rounded-2xl overflow-hidden bg-[#FF6B35] shadow-lg"
+              >
+                <div className="px-6 pt-6 pb-4">
+                  <div className="flex items-end justify-between mb-1">
+                    <p className="text-white/80 text-sm font-medium">{generationStep}</p>
+                    <motion.span
+                      key={generationProgress}
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="text-white text-3xl font-bold font-display tabular-nums"
+                    >
+                      {generationProgress}%
+                    </motion.span>
+                  </div>
+                  <div className="h-2 bg-white/25 rounded-full overflow-hidden">
+                    <motion.div
+                      className="h-full bg-white rounded-full"
+                      animate={{ width: `${generationProgress}%` }}
+                      transition={{ duration: 0.9, ease: 'easeOut' }}
+                    />
+                  </div>
+                </div>
+                <div className="bg-[#E55A28] px-6 py-3">
+                  <p className="text-white/70 text-xs">
+                    A Criaê tá pensando no melhor ângulo pra sua marca. Já já chega 💪
+                  </p>
+                </div>
+              </motion.div>
+            )}
 
             {!generatedContent && !isGenerating && (
               <div className="flex flex-col items-center justify-center h-48 text-center">
