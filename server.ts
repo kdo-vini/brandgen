@@ -6,7 +6,6 @@ import cors from "cors";
 import * as cheerio from "cheerio";
 import axios from "axios";
 import { Vibrant } from "node-vibrant/node";
-import { createServer as createViteServer } from "vite";
 import path from "path";
 import { GoogleGenAI, Modality, Type } from "@google/genai";
 import Stripe from "stripe";
@@ -1070,6 +1069,8 @@ export { app };
 
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
+    // Dynamic import keeps Vite out of the Vercel serverless bundle
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
