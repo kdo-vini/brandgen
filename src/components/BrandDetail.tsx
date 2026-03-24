@@ -4,6 +4,9 @@ import { motion, AnimatePresence } from 'motion/react';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import type { Brand, GeneratedContent, BrandAsset } from '../types';
+import type { SubscriptionInfo, UsageInfo } from '../lib/subscription';
+import { canGenerateImage } from '../lib/subscription';
+import UpgradeModal from './UpgradeModal';
 import { formatProductTypeLabel } from '../lib/brandMeta';
 import {
   CTA_INTENSITY_OPTIONS,
@@ -20,6 +23,8 @@ import TypographicCard from './TypographicCard';
 type Props = {
   user: User;
   brand: Brand;
+  subscription: SubscriptionInfo;
+  usage: UsageInfo;
   onBack: () => void;
   onEdit: (brand: Brand) => void;
   onError?: (msg: string) => void;
@@ -233,8 +238,9 @@ function EditableField({ label, value, isEditing, isRegenerating, onEdit, onSave
   );
 }
 
-export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSuccess }: Props) {
+export default function BrandDetail({ user, brand, subscription, usage, onBack, onEdit, onError, onSuccess }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('generate');
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
   // Generator state
   const [postType, setPostType] = useState(postTypes[0].id);
@@ -615,6 +621,12 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
   const handleGenerateImage = async () => {
     if (!generatedContent) return;
 
+    // Client-side image quota check
+    if (!canGenerateImage(subscription.plan, usage.imageGenerations)) {
+      setShowUpgradeModal(true);
+      return;
+    }
+
     setIsGeneratingImage(true);
 
     try {
@@ -630,11 +642,17 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
           imageSize,
           modelType: resolvedModel.type,
           referenceImages: selectedAssets.map(({ id, url, filename, type }) => ({ id, url, filename, type })),
+          userId: user.id,
         })
       });
 
       if (!imageRes.ok) {
         const errData = await imageRes.json();
+        if (errData.code === 'IMAGE_LIMIT_REACHED') {
+          setShowUpgradeModal(true);
+          setIsGeneratingImage(false);
+          return;
+        }
         throw new Error(errData.error || 'Não consegui gerar a imagem. Tenta de novo?');
       }
 
@@ -898,7 +916,7 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
             <p className="text-sm text-neutral-800 truncate">{brand.target_audience || '—'}</p>
           </div>
           <div>
-            <h4 className="text-xs font-medium text-neutral-500 mb-1">Proposta de Valor</h4>
+            <h4 className="text-xs font-medium text-neutral-500 mb-1">Proposta de valor</h4>
             <p className="text-sm text-neutral-800 truncate">{brand.value_proposition || '—'}</p>
           </div>
           <div>
@@ -1093,7 +1111,7 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
                   <div className="flex items-center justify-between rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2">
                     <div>
                       <label className="block text-xs font-medium text-neutral-700">Texto na imagem</label>
-                      <p className="text-xs text-neutral-500">A Criae tenta renderizar o texto aprovado na arte final.</p>
+                      <p className="text-xs text-neutral-500">A Criaê tenta renderizar o texto aprovado na arte final.</p>
                     </div>
                     <button
                       type="button"
@@ -1246,7 +1264,7 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
                         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700">
                           <ShieldCheck className="h-4 w-4" />
                         </div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-400">Critica interna</p>
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-400">Crítica interna</p>
                         <h3 className="text-base font-semibold text-neutral-900 font-display">Checagem de qualidade antes da arte</h3>
                       </div>
                       <span className={`rounded-full px-3 py-1 text-xs font-medium ${generatedContent.critic.overallScore >= 8 ? 'bg-emerald-50 text-emerald-700' : generatedContent.critic.overallScore >= 6 ? 'bg-amber-50 text-amber-700' : 'bg-rose-50 text-rose-700'}`}>
@@ -1601,6 +1619,10 @@ export default function BrandDetail({ user, brand, onBack, onEdit, onError, onSu
         <div className="bg-white rounded-xl border border-neutral-200 p-6">
           <PostHistory brandId={brand.id} />
         </div>
+      )}
+
+      {showUpgradeModal && (
+        <UpgradeModal user={user} reason="image_limit" onClose={() => setShowUpgradeModal(false)} />
       )}
     </div>
   );

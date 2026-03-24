@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@google/genai": "^1.29.0",
-    "@supabase/supabase-js": "^2.99.3",
+    "@supabase/supabase-js": "^2.100.0",
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",
     "axios": "^1.13.6",
@@ -26,6 +26,7 @@
     "node-vibrant": "^4.0.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "stripe": "^20.4.1",
     "vite": "^6.2.0"
   },
   "devDependencies": {

@@ -9,6 +9,8 @@ import { Vibrant } from "node-vibrant/node";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import { GoogleGenAI, Modality, Type } from "@google/genai";
+import Stripe from "stripe";
+import { createClient } from "@supabase/supabase-js";
 import {
   IMAGEN_NEGATIVE_PROMPT,
   buildAssetParts,
@@ -28,8 +30,177 @@ import {
 } from "./serverPrompting";
 import type { MarketerPreferences } from "./src/lib/marketerControls";
 
+// ─── Stripe + Supabase admin ─────────────────────────────────────────────────
+
+const stripe = process.env.STRIPE_SECRET_KEY
+  ? new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2026-02-25.clover" })
+  : null;
+
+const supabaseAdmin = process.env.SUPABASE_SERVICE_ROLE_KEY
+  ? createClient(
+      process.env.VITE_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY,
+      { auth: { autoRefreshToken: false, persistSession: false } },
+    )
+  : null;
+
+const PLAN_LIMITS_SERVER = {
+  free: { imageGenerationsPerMonth: 5, textGenerationsPerMonth: 15 },
+  pro: { imageGenerationsPerMonth: 50, textGenerationsPerMonth: 200 },
+} as const;
+
+async function getServerUserPlan(userId: string): Promise<"free" | "pro"> {
+  if (!supabaseAdmin) return "free";
+  const { data } = await supabaseAdmin
+    .from("subscriptions")
+    .select("plan, status")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (!data) return "free";
+  const active = data.status === "active" || data.status === "trialing";
+  return active && data.plan === "pro" ? "pro" : "free";
+}
+
+async function getServerUsage(userId: string, month: string) {
+  if (!supabaseAdmin) return { text_generations: 0, image_generations: 0 };
+  const { data } = await supabaseAdmin
+    .from("usage_tracking")
+    .select("text_generations, image_generations")
+    .eq("user_id", userId)
+    .eq("month", month)
+    .maybeSingle();
+  return data ?? { text_generations: 0, image_generations: 0 };
+}
+
+async function incrementUsage(
+  userId: string,
+  month: string,
+  field: "text" | "image",
+) {
+  if (!supabaseAdmin) return;
+  await supabaseAdmin.rpc("increment_usage", {
+    p_user_id: userId,
+    p_month: month,
+    p_text_generations: field === "text" ? 1 : 0,
+    p_image_generations: field === "image" ? 1 : 0,
+  });
+}
+
+// ─── Express app ─────────────────────────────────────────────────────────────
+
 const app = express();
 app.use(cors());
+
+// Stripe webhook needs raw body — register BEFORE express.json()
+app.post(
+  "/api/stripe/webhook",
+  express.raw({ type: "application/json" }),
+  async (req, res) => {
+    if (!stripe || !process.env.STRIPE_WEBHOOK_SECRET) {
+      return res.status(500).json({ error: "Stripe not configured" });
+    }
+
+    const sig = req.headers["stripe-signature"] as string;
+    let event: Stripe.Event;
+
+    try {
+      event = stripe.webhooks.constructEvent(
+        req.body,
+        sig,
+        process.env.STRIPE_WEBHOOK_SECRET,
+      );
+    } catch (err: any) {
+      console.error("[Stripe webhook] signature error:", err.message);
+      return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+
+    if (!supabaseAdmin) {
+      return res.status(500).json({ error: "DB not configured" });
+    }
+
+    try {
+      if (event.type === "checkout.session.completed") {
+        const session = event.data.object as Stripe.Checkout.Session;
+        const userId = session.metadata?.user_id;
+        const customerId = session.customer as string;
+        const subscriptionId = session.subscription as string;
+
+        if (userId && subscriptionId) {
+          const sub = await stripe.subscriptions.retrieve(subscriptionId);
+          const periodEnd = sub.items.data[0]?.current_period_end;
+          await supabaseAdmin.from("subscriptions").upsert(
+            {
+              user_id: userId,
+              stripe_customer_id: customerId,
+              stripe_subscription_id: subscriptionId,
+              plan: "pro",
+              status: sub.status,
+              current_period_end: periodEnd
+                ? new Date(periodEnd * 1000).toISOString()
+                : null,
+              cancel_at_period_end: sub.cancel_at_period_end,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "user_id" },
+          );
+        }
+      }
+
+      if (event.type === "customer.subscription.updated") {
+        const sub = event.data.object as Stripe.Subscription;
+        const userId = sub.metadata?.user_id;
+        if (userId) {
+          const periodEnd = sub.items.data[0]?.current_period_end;
+          await supabaseAdmin
+            .from("subscriptions")
+            .update({
+              status: sub.status,
+              plan: sub.status === "active" || sub.status === "trialing" ? "pro" : "free",
+              current_period_end: periodEnd
+                ? new Date(periodEnd * 1000).toISOString()
+                : null,
+              cancel_at_period_end: sub.cancel_at_period_end,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("stripe_subscription_id", sub.id);
+        }
+      }
+
+      if (event.type === "customer.subscription.deleted") {
+        const sub = event.data.object as Stripe.Subscription;
+        await supabaseAdmin
+          .from("subscriptions")
+          .update({
+            status: "canceled",
+            plan: "free",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("stripe_subscription_id", sub.id);
+      }
+
+      if (event.type === "invoice.payment_failed") {
+        const invoice = event.data.object as Stripe.Invoice;
+        const subId = (
+          invoice.parent?.subscription_details?.subscription ?? null
+        ) as string | null;
+        if (subId) {
+          await supabaseAdmin
+            .from("subscriptions")
+            .update({
+              status: "past_due",
+              updated_at: new Date().toISOString(),
+            })
+            .eq("stripe_subscription_id", subId);
+        }
+      }
+    } catch (err) {
+      console.error("[Stripe webhook] handler error:", err);
+    }
+
+    res.json({ received: true });
+  },
+);
+
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
@@ -708,6 +879,7 @@ app.post("/api/image", async (req, res) => {
       imageSize,
       modelType,
       referenceImages = [],
+      userId,
     } = req.body as {
       prompt: string;
       imageModel: string;
@@ -715,12 +887,30 @@ app.post("/api/image", async (req, res) => {
       imageSize: string;
       modelType: ImageModelType;
       referenceImages?: AssetReference[];
+      userId?: string;
     };
 
     if (!prompt || !imageModel) {
       return res
         .status(400)
         .json({ error: "prompt and imageModel required" });
+    }
+
+    // Server-side image quota check
+    if (userId && supabaseAdmin) {
+      const month = new Date().toISOString().slice(0, 7);
+      const plan = await getServerUserPlan(userId);
+      const usageData = await getServerUsage(userId, month);
+      const limit = PLAN_LIMITS_SERVER[plan].imageGenerationsPerMonth;
+      if (usageData.image_generations >= limit) {
+        return res.status(429).json({
+          error: "Limite de imagens do plano atingido",
+          code: "IMAGE_LIMIT_REACHED",
+          plan,
+          limit,
+          used: usageData.image_generations,
+        });
+      }
     }
 
     const safeReferences = Array.isArray(referenceImages)
@@ -754,6 +944,10 @@ app.post("/api/image", async (req, res) => {
         throw new Error("Nenhuma imagem gerada");
       }
 
+      if (userId) {
+        const month = new Date().toISOString().slice(0, 7);
+        await incrementUsage(userId, month, "image").catch(() => {});
+      }
       return res.json({ imageBase64: imgBytes });
     }
 
@@ -778,12 +972,101 @@ app.post("/api/image", async (req, res) => {
       throw new Error("Nenhuma imagem gerada");
     }
 
+    if (userId) {
+      const month = new Date().toISOString().slice(0, 7);
+      await incrementUsage(userId, month, "image").catch(() => {});
+    }
     res.json({ imageBase64: imagePart.inlineData.data });
   } catch (error: any) {
     console.error("Image error:", error);
     res.status(500).json({ error: error.message || "Erro ao gerar imagem" });
   }
 });
+
+// ─── Stripe routes ────────────────────────────────────────────────────────────
+
+app.post("/api/stripe/checkout", async (req, res) => {
+  if (!stripe) return res.status(500).json({ error: "Stripe not configured" });
+
+  const { userId, userEmail } = req.body as {
+    userId: string;
+    userEmail: string;
+  };
+  if (!userId || !userEmail) {
+    return res.status(400).json({ error: "userId and userEmail required" });
+  }
+
+  const priceId = process.env.STRIPE_PRO_PRICE_ID;
+  if (!priceId) {
+    return res.status(500).json({ error: "STRIPE_PRO_PRICE_ID not configured" });
+  }
+
+  const appUrl = process.env.APP_URL || "http://localhost:3000";
+
+  try {
+    // Find or skip existing customer
+    let customerId: string | undefined;
+    if (supabaseAdmin) {
+      const { data: sub } = await supabaseAdmin
+        .from("subscriptions")
+        .select("stripe_customer_id")
+        .eq("user_id", userId)
+        .maybeSingle();
+      customerId = sub?.stripe_customer_id ?? undefined;
+    }
+
+    const session = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      customer: customerId,
+      customer_email: customerId ? undefined : userEmail,
+      line_items: [{ price: priceId, quantity: 1 }],
+      metadata: { user_id: userId },
+      subscription_data: { metadata: { user_id: userId } },
+      success_url: `${appUrl}/?checkout=success`,
+      cancel_url: `${appUrl}/?checkout=cancel`,
+    });
+
+    res.json({ url: session.url });
+  } catch (err: any) {
+    console.error("[Stripe checkout] error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/stripe/portal", async (req, res) => {
+  if (!stripe) return res.status(500).json({ error: "Stripe not configured" });
+
+  const { userId } = req.body as { userId: string };
+  if (!userId) return res.status(400).json({ error: "userId required" });
+
+  if (!supabaseAdmin) return res.status(500).json({ error: "DB not configured" });
+
+  const { data: sub } = await supabaseAdmin
+    .from("subscriptions")
+    .select("stripe_customer_id")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (!sub?.stripe_customer_id) {
+    return res.status(404).json({ error: "No Stripe customer found" });
+  }
+
+  const appUrl = process.env.APP_URL || "http://localhost:3000";
+
+  try {
+    const session = await stripe.billingPortal.sessions.create({
+      customer: sub.stripe_customer_id,
+      return_url: appUrl,
+    });
+    res.json({ url: session.url });
+  } catch (err: any) {
+    console.error("[Stripe portal] error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Export app for Vercel ────────────────────────────────────────────────────
+export { app };
 
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
@@ -806,4 +1089,7 @@ async function startServer() {
   });
 }
 
-startServer();
+// Only start HTTP server when not running on Vercel (local dev + traditional hosting)
+if (!process.env.VERCEL) {
+  startServer();
+}

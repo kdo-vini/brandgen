@@ -155,7 +155,7 @@ export default function PostHistory({ brandId }: Props) {
 
               {post.image_url && (
                 <div>
-                  <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1">Imagem Gerada</h4>
+                  <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1">Imagem gerada</h4>
                   <img src={post.image_url} alt="Generated" className="max-h-48 rounded border border-neutral-200" />
                 </div>
               )}

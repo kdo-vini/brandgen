@@ -9,6 +9,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import type { User } from '@supabase/supabase-js';
 import type { Brand, AppView } from './types';
 import { supabase } from './lib/supabase';
+import { useSubscription } from './lib/subscription';
 import BrandList from './components/BrandList';
 import BrandForm from './components/BrandForm';
 import BrandDetail from './components/BrandDetail';
@@ -45,6 +46,7 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const { toasts, addToast, removeToast } = useToast();
+  const { subscription, usage, reload: reloadSubscription } = useSubscription(user);
 
   useEffect(() => {
     const checkApiKey = async () => {
@@ -60,13 +62,27 @@ export default function App() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       const resolvedUser = session?.user ?? null;
       setUser(resolvedUser);
-      if (resolvedUser) setView('list');
+      if (resolvedUser) {
+        setView('list');
+        // Handle Stripe checkout redirect
+        const params = new URLSearchParams(window.location.search);
+        const checkoutStatus = params.get('checkout');
+        if (checkoutStatus === 'success') {
+          addToast('Bem-vindo ao Pro! 🎉 Agora é voar alto!', 'success');
+          // Clean URL
+          window.history.replaceState({}, '', window.location.pathname);
+          // Reload subscription after short delay (webhook may take a moment)
+          setTimeout(() => reloadSubscription(), 3000);
+        } else if (checkoutStatus === 'cancel') {
+          window.history.replaceState({}, '', window.location.pathname);
+        }
+      }
       setAuthLoading(false);
     });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription: authSub } } = supabase.auth.onAuthStateChange((event, session) => {
       const newUser = session?.user ?? null;
       setUser(newUser);
-      
+
       if (event === 'SIGNED_OUT') {
         setView('landing');
       }
@@ -74,7 +90,7 @@ export default function App() {
         setView('reset-password');
       }
     });
-    return () => subscription.unsubscribe();
+    return () => authSub.unsubscribe();
   }, []);
 
   const handleSelectKey = async () => {
@@ -225,6 +241,8 @@ export default function App() {
                   setView('create');
                 }}
                 onError={addToast}
+                subscription={subscription}
+                user={user!}
               />
             </motion.div>
           )}
@@ -291,6 +309,8 @@ export default function App() {
               <BrandDetail
                 user={user}
                 brand={selectedBrand}
+                subscription={subscription}
+                usage={usage}
                 onBack={() => {
                   setView('list');
                   setSelectedBrand(null);
@@ -316,6 +336,8 @@ export default function App() {
             >
               <ProfilePage
                 user={user}
+                subscription={subscription}
+                usage={usage}
                 onBack={() => setView('list')}
                 onLogout={handleLogout}
                 onError={addToast}

@@ -145,3 +145,5 @@ export type GeminiAnalysis = {
 };
 
 export type AppView = 'landing' | 'list' | 'create' | 'edit' | 'detail' | 'profile' | 'reset-password';
+
+export type { SubscriptionInfo, SubscriptionPlan, SubscriptionStatus, UsageInfo } from './lib/subscription';

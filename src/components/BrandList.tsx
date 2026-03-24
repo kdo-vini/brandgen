@@ -1,15 +1,21 @@
 import React, { useEffect, useState } from 'react';
-import { Plus, Trash2, Loader2, Globe } from 'lucide-react';
+import { Plus, Trash2, Loader2, Globe, Lock } from 'lucide-react';
 import { motion } from 'motion/react';
+import type { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import type { Brand } from '../types';
+import type { SubscriptionInfo } from '../lib/subscription';
+import { canAddBrand } from '../lib/subscription';
 import Onboarding from './Onboarding';
+import UpgradeModal from './UpgradeModal';
 
 type Props = {
   onSelectBrand: (brand: Brand) => void;
   onCreateBrand: () => void;
   onCreateBrandWithUrl?: (url: string) => void;
   onError?: (msg: string) => void;
+  user: User;
+  subscription: SubscriptionInfo;
 };
 
 const productTypeLabels: Record<string, string> = {
@@ -38,10 +44,27 @@ const cardVariants = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.3, ease: 'easeOut' as const } },
 };
 
-export default function BrandList({ onSelectBrand, onCreateBrand, onCreateBrandWithUrl, onError }: Props) {
+export default function BrandList({ onSelectBrand, onCreateBrand, onCreateBrandWithUrl, onError, user, subscription }: Props) {
   const [brands, setBrands] = useState<Brand[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+
+  const handleCreateBrand = () => {
+    if (!canAddBrand(subscription.plan, brands.length)) {
+      setShowUpgradeModal(true);
+      return;
+    }
+    onCreateBrand();
+  };
+
+  const handleCreateBrandWithUrl = (url: string) => {
+    if (!canAddBrand(subscription.plan, brands.length)) {
+      setShowUpgradeModal(true);
+      return;
+    }
+    onCreateBrandWithUrl?.(url) ?? onCreateBrand();
+  };
 
   useEffect(() => {
     fetchBrands();
@@ -84,15 +107,24 @@ export default function BrandList({ onSelectBrand, onCreateBrand, onCreateBrandW
 
   if (brands.length === 0) {
     return (
-      <Onboarding
-        onStartWithUrl={(url) => onCreateBrandWithUrl?.(url) ?? onCreateBrand()}
-        onStartManual={onCreateBrand}
-      />
+      <>
+        <Onboarding
+          onStartWithUrl={handleCreateBrandWithUrl}
+          onStartManual={handleCreateBrand}
+        />
+        {showUpgradeModal && (
+          <UpgradeModal user={user} reason="brand_limit" onClose={() => setShowUpgradeModal(false)} />
+        )}
+      </>
     );
   }
 
   return (
     <div>
+      {showUpgradeModal && (
+        <UpgradeModal user={user} reason="brand_limit" onClose={() => setShowUpgradeModal(false)} />
+      )}
+
       <div className="flex items-center justify-between mb-8">
         <div>
           <h2 className="text-2xl font-bold text-neutral-900 font-display">Suas marcas 🎨</h2>
@@ -103,7 +135,7 @@ export default function BrandList({ onSelectBrand, onCreateBrand, onCreateBrandW
           </p>
         </div>
         <button
-          onClick={onCreateBrand}
+          onClick={handleCreateBrand}
           className="inline-flex items-center px-4 py-2.5 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-[#FF6B35] hover:bg-[#E55A28] transition-colors"
         >
           + Nova marca
@@ -194,13 +226,23 @@ export default function BrandList({ onSelectBrand, onCreateBrand, onCreateBrandW
 
         {/* Add new brand card */}
         <motion.div variants={cardVariants}>
-          <div
-            onClick={onCreateBrand}
-            className="bg-white rounded-xl border-2 border-dashed border-neutral-200 p-5 cursor-pointer hover:border-[#FF8C5A] hover:bg-[#FFF1EB]/30 transition-all flex flex-col items-center justify-center min-h-[160px]"
-          >
-            <Plus className="h-8 w-8 text-neutral-300 mb-2" />
-            <span className="text-sm font-medium text-neutral-400">Nova marca</span>
-          </div>
+          {canAddBrand(subscription.plan, brands.length) ? (
+            <div
+              onClick={handleCreateBrand}
+              className="bg-white rounded-xl border-2 border-dashed border-neutral-200 p-5 cursor-pointer hover:border-[#FF8C5A] hover:bg-[#FFF1EB]/30 transition-all flex flex-col items-center justify-center min-h-[160px]"
+            >
+              <Plus className="h-8 w-8 text-neutral-300 mb-2" />
+              <span className="text-sm font-medium text-neutral-400">Nova marca</span>
+            </div>
+          ) : (
+            <div
+              onClick={() => setShowUpgradeModal(true)}
+              className="bg-white rounded-xl border-2 border-dashed border-neutral-200 p-5 cursor-pointer hover:border-[#FF8C5A] hover:bg-[#FFF1EB]/30 transition-all flex flex-col items-center justify-center min-h-[160px] group"
+            >
+              <Lock className="h-8 w-8 text-neutral-300 mb-2 group-hover:text-[#FF8C5A]" />
+              <span className="text-sm font-medium text-neutral-400 group-hover:text-[#FF6B35]">Upgrade para mais marcas</span>
+            </div>
+          )}
         </motion.div>
       </motion.div>
     </div>
