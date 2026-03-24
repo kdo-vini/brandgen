@@ -6,14 +6,14 @@ import {
   buildAssetParts,
   type AssetReference,
   type ImageModelType,
-} from "../serverPrompting";
-import { PLAN_LIMITS } from "../src/lib/planLimits";
+} from "../serverPrompting.js";
+import { PLAN_LIMITS } from "../src/lib/planLimits.js";
 import {
   getServerUserPlan,
   getServerUsage,
   incrementUsage,
-} from "../services/billingService";
-import { buildMultimodalContents } from "../services/geminiService";
+} from "../services/billingService.js";
+import { buildMultimodalContents } from "../services/geminiService.js";
 
 export function createImageRoute(supabaseAdmin: SupabaseClient | null) {
   const router = express.Router();

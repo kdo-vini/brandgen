@@ -7,8 +7,8 @@ import {
   type MarketerPreferences,
   type PostObjective,
   type ToneOverride,
-} from "./src/lib/marketerControls";
-import { getFewShotExamples } from "./src/lib/fewShotBank";
+} from "./src/lib/marketerControls.js";
+import { getFewShotExamples } from "./src/lib/fewShotBank.js";
 
 export type ImageModelType = "imagen" | "nanoBanana";
 

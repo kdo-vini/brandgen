@@ -6,10 +6,10 @@ import cors from "cors";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 
-import { createScrapeRoutes } from "./routes/scrapeRoutes";
-import { createGenerateRoute } from "./routes/generateRoute";
-import { createImageRoute } from "./routes/imageRoute";
-import { createStripeRoutes } from "./routes/stripeRoutes";
+import { createScrapeRoutes } from "./routes/scrapeRoutes.js";
+import { createGenerateRoute } from "./routes/generateRoute.js";
+import { createImageRoute } from "./routes/imageRoute.js";
+import { createStripeRoutes } from "./routes/stripeRoutes.js";
 
 // ─── Singletons ───────────────────────────────────────────────────────────────
 

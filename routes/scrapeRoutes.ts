@@ -2,13 +2,13 @@ import express from "express";
 import * as cheerio from "cheerio";
 import axios from "axios";
 import { GoogleGenAI, Type } from "@google/genai";
-import { normalizeProductType } from "../serverPrompting";
-import { generateStructuredObject, toSafeJson } from "../services/geminiService";
+import { normalizeProductType } from "../serverPrompting.js";
+import { generateStructuredObject, toSafeJson } from "../services/geminiService.js";
 import {
   extractColorsFromImageBuffer,
   deduplicateColors,
   extractCssHexColors,
-} from "../services/colorService";
+} from "../services/colorService.js";
 
 export function createScrapeRoutes() {
   const router = express.Router();

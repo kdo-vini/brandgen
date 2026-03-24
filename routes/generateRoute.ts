@@ -20,15 +20,15 @@ import {
   type ImageModelType,
   type StrategyPlan,
   type VisualBrief,
-} from "../serverPrompting";
-import type { MarketerPreferences } from "../src/lib/marketerControls";
-import { PLAN_LIMITS } from "../src/lib/planLimits";
+} from "../serverPrompting.js";
+import type { MarketerPreferences } from "../src/lib/marketerControls.js";
+import { PLAN_LIMITS } from "../src/lib/planLimits.js";
 import {
   getServerUserPlan,
   getServerUsage,
   incrementUsage,
-} from "../services/billingService";
-import { generateStructuredObject } from "../services/geminiService";
+} from "../services/billingService.js";
+import { generateStructuredObject } from "../services/geminiService.js";
 
 export function createGenerateRoute(supabaseAdmin: SupabaseClient | null) {
   const router = express.Router();
