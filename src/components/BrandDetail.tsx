@@ -566,8 +566,15 @@ export default function BrandDetail({ user, brand, subscription, usage, onBack, 
       });
 
       if (!generateRes.ok) {
-        const errData = await generateRes.json();
-        throw new Error(errData.error || 'A IA viajou 😅 Tenta mais uma vez?');
+        let errMsg = 'A IA viajou 😅 Tenta mais uma vez?';
+        try {
+          const errData = await generateRes.json();
+          errMsg = errData.error || errMsg;
+        } catch {
+          const text = await generateRes.text().catch(() => '');
+          if (text) errMsg = text.slice(0, 200);
+        }
+        throw new Error(errMsg);
       }
 
       const content: GeneratedContent = await generateRes.json();
@@ -647,7 +654,8 @@ export default function BrandDetail({ user, brand, subscription, usage, onBack, 
       });
 
       if (!imageRes.ok) {
-        const errData = await imageRes.json();
+        let errData: any = {};
+        try { errData = await imageRes.json(); } catch { /* non-JSON response */ }
         if (errData.code === 'IMAGE_LIMIT_REACHED') {
           setShowUpgradeModal(true);
           setIsGeneratingImage(false);
@@ -717,8 +725,15 @@ export default function BrandDetail({ user, brand, subscription, usage, onBack, 
       });
 
       if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.error || 'Não consegui refazer esse campo.');
+        let errMsg = 'Não consegui refazer esse campo.';
+        try {
+          const errData = await res.json();
+          errMsg = errData.error || errMsg;
+        } catch {
+          const text = await res.text().catch(() => '');
+          if (text) errMsg = text.slice(0, 200);
+        }
+        throw new Error(errMsg);
       }
 
       const newContent: GeneratedContent = await res.json();

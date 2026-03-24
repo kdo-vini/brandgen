@@ -19,7 +19,7 @@ Este documento define a estrutura comercial final, os limites de uso baseados no
 * **Limites de Segurança:**
   * **1 Brand**
   * **15 gerações de texto** (limite de saúde da conta)
-  * **Exatas 3 imagens geradas** (degustação visual rápida)
+  * **Exatas 3 imagens geradas por mes** (degustação visual rápida)
   * Sem acesso avançado a recursos premium.
 * **Gatilho de Upgrade:** Após 3 cliques na imagem, esbarra no paywall pra converter no impulso.
 
@@ -37,7 +37,7 @@ Este documento define a estrutura comercial final, os limites de uso baseados no
 
 ### 3. Agência (Máquina Operacional)
 **Preço:** R$ 397,00 / mês
-**Para quem é:** Agências consolidadas ou Social Medias sênior. R$ 397 diluído em 15 clientes te dá o melhor negócio de atacado do mercado (R$ 26,46 por conta conectada).
+**Para quem é:** Agências consolidadas ou Social Medias sênior. R$ 397 diluído em 15 clientes te dá o melhor negócio de atacado do mercado (R$ 26,46 po1r conta conectada).
 **Promessa:** "Opere contas e escale sua carteira de clientes sem inchar sua folha de pagamento."
 
 * **Limites Toleráveis de Custo:**

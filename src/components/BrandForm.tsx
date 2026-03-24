@@ -180,8 +180,12 @@ export default function BrandForm({ user, existingBrand, initialUrl, onSaved, on
       });
 
       if (!scrapeRes.ok) {
-        const errData = await scrapeRes.json();
-        throw new Error(errData.error || 'Esse site não quis abrir a porta pra gente 😅 Confere o link e tenta de novo?');
+        let errMsg = 'Esse site não quis abrir a porta pra gente 😅 Confere o link e tenta de novo?';
+        try {
+          const errData = await scrapeRes.json();
+          errMsg = errData.error || errMsg;
+        } catch { /* non-JSON response */ }
+        throw new Error(errMsg);
       }
 
       const scraped: ScrapeResult = await scrapeRes.json();

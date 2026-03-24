@@ -36,10 +36,10 @@ const stripe = process.env.STRIPE_SECRET_KEY
 
 const supabaseAdmin = process.env.SUPABASE_SERVICE_ROLE_KEY
   ? createClient(
-      process.env.VITE_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY,
-      { auth: { autoRefreshToken: false, persistSession: false } },
-    )
+    process.env.VITE_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY,
+    { auth: { autoRefreshToken: false, persistSession: false } },
+  )
   : null;
 
 const PLAN_LIMITS_SERVER = {
@@ -298,7 +298,7 @@ async function generateStructuredObject<T>({
   assetParts?: any[];
 }) {
   const response = await ai.models.generateContent({
-    model: "gemini-2.5-pro-preview-03-25",
+    model: "gemini-2.5-pro",
     contents: buildMultimodalContents(prompt, assetParts),
     config: {
       responseMimeType: "application/json",
@@ -565,7 +565,7 @@ Return:
 Prefer pt-BR whenever the site appears to be Brazilian.`;
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-pro-preview-03-25",
+      model: "gemini-2.5-pro",
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -944,7 +944,7 @@ app.post("/api/image", async (req, res) => {
 
       if (userId) {
         const month = new Date().toISOString().slice(0, 7);
-        await incrementUsage(userId, month, "image").catch(() => {});
+        await incrementUsage(userId, month, "image").catch(() => { });
       }
       return res.json({ imageBase64: imgBytes });
     }
@@ -972,7 +972,7 @@ app.post("/api/image", async (req, res) => {
 
     if (userId) {
       const month = new Date().toISOString().slice(0, 7);
-      await incrementUsage(userId, month, "image").catch(() => {});
+      await incrementUsage(userId, month, "image").catch(() => { });
     }
     res.json({ imageBase64: imagePart.inlineData.data });
   } catch (error: any) {
