@@ -45,8 +45,8 @@ const supabaseAdmin = process.env.SUPABASE_SERVICE_ROLE_KEY
   : null;
 
 const PLAN_LIMITS_SERVER = {
-  free: { imageGenerationsPerMonth: 5, textGenerationsPerMonth: 15 },
-  pro: { imageGenerationsPerMonth: 50, textGenerationsPerMonth: 200 },
+  free: { imageGenerationsPerMonth: 3, textGenerationsPerMonth: 15 },
+  pro: { imageGenerationsPerMonth: 40, textGenerationsPerMonth: 150 },
 } as const;
 
 async function getServerUserPlan(userId: string): Promise<"free" | "pro"> {

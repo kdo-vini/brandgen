@@ -11,12 +11,12 @@ export const PLAN_LIMITS = {
   free: {
     brands: 1,
     textGenerationsPerMonth: 15,
-    imageGenerationsPerMonth: 5,
+    imageGenerationsPerMonth: 3,
   },
   pro: {
     brands: 3,
-    textGenerationsPerMonth: 200,
-    imageGenerationsPerMonth: 50,
+    textGenerationsPerMonth: 150,
+    imageGenerationsPerMonth: 40,
   },
 } as const;
 

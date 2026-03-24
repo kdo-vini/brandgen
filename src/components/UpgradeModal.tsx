@@ -108,7 +108,7 @@ export default function UpgradeModal({ user, reason = 'general', onClose }: Prop
                 <div>
                   <p className="text-xs font-medium text-[#FF6B35] uppercase tracking-wider mb-0.5">Social Media Pro</p>
                   <p className="text-2xl font-bold text-neutral-900 font-display">
-                    R$ 129<span className="text-sm font-normal text-neutral-500">/mês</span>
+                    R$ 97<span className="text-sm font-normal text-neutral-500">/mês</span>
                   </p>
                 </div>
                 <span className="inline-flex items-center px-2 py-1 bg-[#FFF1EB] text-[#FF6B35] text-xs font-semibold rounded-full">

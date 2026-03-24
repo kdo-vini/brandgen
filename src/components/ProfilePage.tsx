@@ -253,7 +253,7 @@ export default function ProfilePage({ user, subscription, usage, onBack, onLogou
                 {isLoadingCheckout ? (
                   <><Loader2 className="h-4 w-4 animate-spin" /> Abrindo checkout...</>
                 ) : (
-                  <><Zap className="h-4 w-4" /> Quero o Pro — R$ 129/mês</>
+                  <><Zap className="h-4 w-4" /> Quero o Pro — R$ 97/mês</>
                 )}
               </button>
               <p className="mt-2 text-xs text-neutral-400">
