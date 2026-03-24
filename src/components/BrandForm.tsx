@@ -5,6 +5,7 @@ import type { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import type { Brand, ScrapeResult, GeminiAnalysis } from '../types';
 import { PRODUCT_TYPE_LABELS, PRODUCT_TYPES, normalizeProductType } from '../lib/brandMeta';
+import { useScanFlow } from '../hooks/useScanFlow';
 
 type Props = {
   user: User;
@@ -41,20 +42,6 @@ const tones = Object.keys(toneLabels);
 const languages = Object.keys(languageLabels);
 const emojiStyles = Object.keys(emojiStyleLabels);
 
-const urlLoadingSteps = [
-  'Abrindo o site... 🌐',
-  'Lendo as cores e textos... 🎨',
-  'A IA tá analisando sua marca... 🤖',
-  'Quase lá, só um instante... ✨',
-];
-
-const igLoadingSteps = [
-  'Lendo a imagem... 📸',
-  'Extraindo as cores... 🎨',
-  'A IA tá analisando o perfil... 🤖',
-  'Quase pronto! ✨',
-];
-
 function normalizeBrandUrl(rawUrl: string) {
   const trimmedUrl = rawUrl.trim();
   if (!trimmedUrl) return '';
@@ -66,19 +53,9 @@ function parseKeywords(value: string) {
   return value.split(',').map(keyword => keyword.trim()).filter(Boolean);
 }
 
-async function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve((reader.result as string).split(',')[1]);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
 export default function BrandForm({ user, existingBrand, initialUrl, onSaved, onCancel, onError, onSuccess }: Props) {
   const [scanMode, setScanMode] = useState<ScanMode>('url');
   const [url, setUrl] = useState(existingBrand?.url || initialUrl || '');
-  const [loadingStep, setLoadingStep] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   // Instagram screenshot
@@ -161,118 +138,15 @@ export default function BrandForm({ user, existingBrand, initialUrl, onSaved, on
     if (data.secondary_color) setSecondaryColor(data.secondary_color);
   };
 
-  const handleScan = async (urlOverride?: string | null) => {
-    const rawTargetUrl = typeof urlOverride === 'string' ? urlOverride : url;
-    const targetUrl = normalizeBrandUrl(rawTargetUrl);
-    if (!targetUrl) {
-      onError?.('Opa, cola uma URL aí primeiro! 👆');
-      return;
-    }
-
-    setUrl(targetUrl);
-    setLoadingStep(urlLoadingSteps[0]);
-
-    try {
-      const scrapeRes = await fetch('/api/scrape', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: targetUrl })
-      });
-
-      if (!scrapeRes.ok) {
-        let errMsg = 'Esse site não quis abrir a porta pra gente 😅 Confere o link e tenta de novo?';
-        try {
-          const errData = await scrapeRes.json();
-          errMsg = errData.error || errMsg;
-        } catch { /* non-JSON response */ }
-        throw new Error(errMsg);
-      }
-
-      const scraped: ScrapeResult = await scrapeRes.json();
-
-      await new Promise(resolve => setTimeout(resolve, 300));
-      setLoadingStep(urlLoadingSteps[1]);
-      setLoadingStep(urlLoadingSteps[2]);
-
-      const analyzeRes = await fetch('/api/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scraped })
-      });
-
-      if (!analyzeRes.ok) {
-        let errorMsg = 'Ih, travou na análise! Tenta de novo? 🔄';
-        try {
-          const errData = await analyzeRes.json();
-          errorMsg = errData.error || errorMsg;
-        } catch (e) {
-          console.error('Erro ao ler resposta de erro:', e);
-        }
-        throw new Error(errorMsg);
-      }
-
-      const analysis: GeminiAnalysis = await analyzeRes.json();
-
-      setLoadingStep(urlLoadingSteps[3]);
+  const { isScanning, loadingStep, scanUrl, scanInstagram } = useScanFlow({
+    onScanComplete: (scraped, analysis) => {
       applyScanResults(scraped, analysis);
-
-      await new Promise(resolve => setTimeout(resolve, 500));
-      onSuccess?.('Marca analisada! Confere os campos abaixo 👇');
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Ih, travou! Tenta de novo? 🔄';
-      onError?.(message);
-    } finally {
-      setLoadingStep(null);
-    }
-  };
-
-  const handleInstagramScan = async () => {
-    if (!igFile) {
-      onError?.('Sobe o print do perfil primeiro! 📸');
-      return;
-    }
-
-    setLoadingStep(igLoadingSteps[0]);
-
-    try {
-      const base64 = await fileToBase64(igFile);
-      const mimeType = igFile.type || 'image/jpeg';
-
-      setLoadingStep(igLoadingSteps[1]);
-
-      const res = await fetch('/api/analyze-instagram', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64: base64, mimeType }),
-      });
-
-      setLoadingStep(igLoadingSteps[2]);
-
-      if (!res.ok) {
-        let errorMsg = 'Não consegui analisar a imagem 😕 Tenta de novo?';
-        try {
-          const errData = await res.json();
-          errorMsg = errData.error || errorMsg;
-        } catch {
-          // resposta não-JSON (HTML de erro do servidor)
-        }
-        throw new Error(errorMsg);
-      }
-
-      const data = await res.json();
-
-      setLoadingStep(igLoadingSteps[3]);
-      applyInstagramResults(data);
-
-      await new Promise(resolve => setTimeout(resolve, 400));
-      onSuccess?.('Perfil analisado! Confere os campos abaixo 👇');
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Ih, travou! Tenta de novo? 🔄';
-      onError?.(message);
-    } finally {
-      setLoadingStep(null);
-    }
-  };
+      if (scraped.url) setUrl(scraped.url);
+    },
+    onInstagramComplete: applyInstagramResults,
+    onSuccess,
+    onError,
+  });
 
   const handleIgFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -317,7 +191,7 @@ export default function BrandForm({ user, existingBrand, initialUrl, onSaved, on
   // Auto-trigger scan when arriving from onboarding with a pre-filled URL
   useEffect(() => {
     if (initialUrl && !existingBrand) {
-      void handleScan(initialUrl);
+      void scanUrl(initialUrl);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -447,8 +321,8 @@ export default function BrandForm({ user, existingBrand, initialUrl, onSaved, on
               </div>
               <motion.button
                 whileTap={{ scale: 0.97 }}
-                onClick={() => { void handleScan(); }}
-                disabled={!!loadingStep || !url}
+                onClick={() => { void scanUrl(url); }}
+                disabled={isScanning || !url}
                 className="inline-flex items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-[#FF6B35] hover:bg-[#E55A28] disabled:opacity-50 transition-colors whitespace-nowrap"
               >
                 {loadingStep ? (
@@ -507,8 +381,8 @@ export default function BrandForm({ user, existingBrand, initialUrl, onSaved, on
                   </p>
                   <motion.button
                     whileTap={{ scale: 0.97 }}
-                    onClick={() => { void handleInstagramScan(); }}
-                    disabled={!!loadingStep}
+                    onClick={() => { if (igFile) void scanInstagram(igFile); else onError?.('Sobe o print do perfil primeiro! 📸'); }}
+                    disabled={isScanning}
                     className="inline-flex items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-[#FF6B35] hover:bg-[#E55A28] disabled:opacity-50 transition-colors"
                   >
                     {loadingStep ? (

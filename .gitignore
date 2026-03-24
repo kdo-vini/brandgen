@@ -7,3 +7,7 @@ coverage/
 .env*
 !.env.example
 .vercel
+
+# Claude Code worktrees (local dev artifacts)
+.claude/worktrees/
+.claude/settings.local.json

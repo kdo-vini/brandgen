@@ -64,26 +64,46 @@ All new `indigo-*` Tailwind classes should be replaced with arbitrary values fro
 1. Exposes all backend API routes (scraping, Gemini AI)
 2. In dev mode, mounts Vite as middleware (SPA + HMR). In production, serves `dist/` statically.
 
-### Express API Routes (`server.ts`)
+### Server directory structure
+
+```
+app.ts                     ← Express app setup (~50 lines); imports routes + singletons
+server.ts                  ← Dev entry point (starts Express + Vite middleware)
+serverPrompting.ts         ← All AI prompt builders + Gemini schemas
+
+services/
+  colorService.ts          ← hexToRgb, colorDistance, deduplicateColors, extractColorsFromImageBuffer
+  billingService.ts        ← getServerUserPlan, getServerUsage, incrementUsage (accept supabaseAdmin param)
+  geminiService.ts         ← toSafeJson, buildMultimodalContents, generateStructuredObject
+
+routes/
+  scrapeRoutes.ts          ← POST /api/scrape, /api/extract-image-colors, /api/analyze, /api/analyze-instagram
+  generateRoute.ts         ← POST /api/generate (with server-side text quota check + usage tracking)
+  imageRoute.ts            ← POST /api/image (with server-side image quota check)
+  stripeRoutes.ts          ← POST /api/stripe/webhook, /api/stripe/checkout, /api/stripe/portal
+```
+
+### Express API Routes
 
 | Route | Purpose |
 |---|---|
 | `POST /api/scrape` | Fetches URL, extracts title/description/colors/logo via `cheerio` + `node-vibrant` |
-| `POST /api/analyze` | Receives `{ scraped }`, calls Gemini `gemini-2.0-flash`, returns `GeminiAnalysis` |
-| `POST /api/generate` | Receives brand kit + marketer prefs + assets, runs full 4-step AI chain, returns `GeneratedContent` with strategy/copy/visual_brief/critic. Supports partial regen via `regenerateField` + `currentContent`. |
-| `POST /api/image` | Receives `{ prompt, imageModel, aspectRatio, imageSize, modelType }`, calls Imagen or Gemini image model, returns `{ imageBase64 }` |
+| `POST /api/analyze` | Receives `{ scraped }`, calls Gemini, returns `GeminiAnalysis` |
+| `POST /api/generate` | Receives brand kit + marketer prefs + assets + `userId`, runs full 4-step AI chain, returns `GeneratedContent`. Server-side text quota enforced. |
+| `POST /api/image` | Receives `{ prompt, imageModel, aspectRatio, imageSize, modelType, userId }`, calls Imagen or Gemini. Server-side image quota enforced. |
 
 **Partial regeneration in `/api/generate`:** If `regenerateField` and `currentContent` are in the request body, the route runs a focused prompt to regenerate only that field and returns early with `{ ...currentContent, [field]: newValue }`.
 
 ### AI Generation Pipeline (`serverPrompting.ts`)
 
-All AI prompt logic lives in `serverPrompting.ts` (server-side only, never imported by the frontend).
+All AI prompt logic lives in `serverPrompting.ts` (server-side only, never imported by the frontend). Also exports the 4 Gemini response schemas (`strategySchema`, `copySchema`, `visualBriefSchema`, `criticSchema`).
 
 **Chain order:** `buildStrategyPrompt` → `buildCopyPrompt` → `buildVisualBriefPrompt` → `buildCriticPrompt` → `buildImagePromptFromBrief`
 
 | Export | Purpose |
 |---|---|
 | `PROMPT_VERSIONS` | Version map `{ strategy, copy, visual, critic }` — bump when changing any prompt |
+| `strategySchema / copySchema / visualBriefSchema / criticSchema` | Gemini structured output schemas |
 | `buildStrategyPrompt()` | Chooses objective + creative angle before any copy. Injects few-shot examples. |
 | `buildCopyPrompt()` | Writes hook, caption, CTA, hashtags, imageText from strategy output |
 | `buildVisualBriefPrompt()` | Generates structured visual direction (composition, layout, productRole, avoid[]) from copy |
@@ -107,6 +127,27 @@ All AI prompt logic lives in `serverPrompting.ts` (server-side only, never impor
 - **Supabase:** All DB/Storage calls happen directly in components. Client singleton at `src/lib/supabase.ts`.
 - **Gemini:** NEVER instantiate `GoogleGenAI` in the browser. All AI calls go through the Express routes above.
 
+### Frontend directory structure
+
+```
+src/
+  constants/
+    postTypes.ts           ← postTypes array (14 types with visual hints)
+    imageGeneration.ts     ← imageModels, imageStyles, formatOptions, aspectRatios, resolveImageModel()
+
+  hooks/
+    useToast.ts            ← addToast(msg, type) for global notifications
+    useGenerationProgress.ts ← 7-stage progress bar timing for AI generation
+    useEditableFields.ts   ← editingField, humanEdits, regenerationCounts, trackFieldEdit, trackRegeneration
+    useScanFlow.ts         ← scanUrl(url) + scanInstagram(file) — URL and Instagram scan flows
+
+  lib/
+    planLimits.ts          ← PLAN_LIMITS constant (no browser deps — safe to import on server)
+    subscription.ts        ← useSubscription hook + re-exports PLAN_LIMITS
+    marketerControls.ts    ← MarketerPreferences type + options
+    fewShotBank.ts         ← FEW_SHOT_BANK + getFewShotExamples()
+```
+
 ### Key Components
 
 | Component | Responsibility |
@@ -114,19 +155,19 @@ All AI prompt logic lives in `serverPrompting.ts` (server-side only, never impor
 | `App.tsx` | View router, global state, toast integration, onboarding URL handoff |
 | `Onboarding.tsx` | Full-screen welcome shown when no brands exist. Accepts URL → passes to `BrandForm` via `onboardingUrl` state |
 | `BrandList.tsx` | Brand card grid. Renders `<Onboarding>` when brands array is empty |
-| `BrandForm.tsx` | Brand create/edit. Accepts `initialUrl` prop — auto-triggers scan on mount if provided |
-| `BrandDetail.tsx` | Post generator, brand kit summary, 3 tabs (Criar post / Assets / Histórico) |
+| `BrandForm.tsx` | Brand create/edit. Uses `useScanFlow` for URL + Instagram scan flows. Accepts `initialUrl` prop — auto-triggers scan on mount if provided |
+| `BrandDetail.tsx` | Post generator, brand kit summary, 3 tabs (Criar post / Assets / Histórico). Uses `useGenerationProgress` + `useEditableFields` hooks. |
 | `TypographicCard.tsx` | DOM/CSS card renderer with 3 templates (Gradiente, Dark, Clean). Uses brand colors via inline styles |
 | `AssetUploader.tsx` | Supabase Storage upload/delete for brand photos |
 | `PostHistory.tsx` | Collapsible list of past generated posts |
 | `Toast.tsx` | Animated toast notifications (error `#EF476F`, success `#06D6A0`) |
 | `src/lib/marketerControls.ts` | `MarketerPreferences` type + normalization helpers. Source of truth for objective/tone/emoji/CTA/style options. |
 | `src/lib/fewShotBank.ts` | `FEW_SHOT_BANK` array (15 examples across 5 verticals) + `getFewShotExamples(productType, postType)` selector. |
-| `serverPrompting.ts` | All AI prompt builders, type definitions, `PROMPT_VERSIONS`. Never imported by frontend. |
+| `serverPrompting.ts` | All AI prompt builders, type definitions, `PROMPT_VERSIONS`, Gemini schemas. Never imported by frontend. |
 
 ### `BrandDetail.tsx` — Generated Content Flow
 
-1. `handleGenerateContent` → `POST /api/generate` → sets both `generatedContent` and `editedContent`
+1. `handleGenerateContent` → `POST /api/generate` (with `userId`) → sets both `generatedContent` and `editedContent`
 2. User can **edit any field inline** (`EditableField` component — click to edit, blur/Enter to save)
 3. User can **regenerate one field** ("refazer" button per field → `handleRegenerateField` → `POST /api/generate` with `regenerateField`)
 4. "Copiar tudo" and `TypographicCard` both read from `editedContent` (not `generatedContent`)
@@ -197,6 +238,7 @@ Code uses graceful fallback: tries to save extended payload; on schema error, re
 1. **Prop mutation in `BrandDetail.tsx`** — `handleRescan` directly mutates `brand.colors`, `brand.primary_color`, etc. on the prop object. Should use `onEdit(updatedBrand)` to trigger a proper React re-render.
 2. **No auth / no RLS** — All Supabase tables are globally readable/writable with the anon key. Phase 4 priority.
 3. **SPA scraping** — `/api/scrape` uses `axios` + `cheerio`; JS-rendered sites (React/Next/Vue apps) return empty HTML. Consider Puppeteer for a future improvement.
+4. **`useScanFlow` hook initialization order** — Hook is called after `applyScanResults` + `applyInstagramResults` are defined (to avoid temporal dead zone issues with `const` declarations). This is intentional and safe since callbacks are closures, but devs should keep the hook call after those two functions.
 
 
 

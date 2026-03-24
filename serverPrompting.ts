@@ -1,5 +1,5 @@
 import axios from "axios";
-import { createPartFromBase64 } from "@google/genai";
+import { createPartFromBase64, Type } from "@google/genai";
 import {
   normalizeMarketerPreferences,
   type CtaIntensity,
@@ -1337,40 +1337,95 @@ ${styleSafetyRules.map((rule) => `- ${rule}`).join("\n")}
 </rules>`;
 }
 
-export function appendPromptGuardrails({
-  prompt,
-  hook,
-  includeText,
-  language,
-  imageModelType,
-  hasAssets,
-}: {
-  prompt: string;
-  hook: string;
-  includeText: boolean;
-  language: string;
-  imageModelType: ImageModelType;
-  hasAssets: boolean;
-}) {
-  const cleanedPrompt = prompt.trim();
-  const guardrails: string[] = [
-    "Final output must look like finished marketing creative, not a mockup, browser screenshot, or social preview.",
-    "Avoid placeholder branding, fake UI, stock-photo emotion, clipart, unreadable typography, and generic AI aesthetics.",
-  ];
+// ─── Gemini response schemas ──────────────────────────────────────────────────
 
-  if (includeText && hook.trim()) {
-    guardrails.push(
-      `Render exactly this text in ${language}: "${hook.trim()}". Keep it short, bold, and fully legible.`,
-    );
-  } else {
-    guardrails.push("Do not include any text or letters in the final image.");
-  }
+export const strategySchema = {
+  type: Type.OBJECT,
+  properties: {
+    objective: { type: Type.STRING },
+    angle: { type: Type.STRING },
+    copyApproach: { type: Type.STRING },
+    captionBlueprint: { type: Type.STRING },
+    emotionalVector: { type: Type.STRING },
+    rationale: { type: Type.STRING },
+    imageText: { type: Type.STRING },
+  },
+  required: [
+    "objective",
+    "angle",
+    "copyApproach",
+    "captionBlueprint",
+    "emotionalVector",
+    "rationale",
+    "imageText",
+  ],
+};
 
-  if (hasAssets && imageModelType === "nanoBanana") {
-    guardrails.push(
-      "Use the attached assets as the source of truth for the real product and preserve their identity while improving the layout.",
-    );
-  }
+export const copySchema = {
+  type: Type.OBJECT,
+  properties: {
+    hook: { type: Type.STRING },
+    caption: { type: Type.STRING },
+    cta: { type: Type.STRING },
+    hashtags: { type: Type.STRING },
+  },
+  required: ["hook", "caption", "cta", "hashtags"],
+};
 
-  return `${cleanedPrompt}\n\nGuardrails:\n- ${guardrails.join("\n- ")}`;
-}
+export const visualBriefSchema = {
+  type: Type.OBJECT,
+  properties: {
+    modelRecommendation: { type: Type.STRING },
+    visualGoal: { type: Type.STRING },
+    composition: { type: Type.STRING },
+    layout: { type: Type.STRING },
+    background: { type: Type.STRING },
+    productRole: { type: Type.STRING },
+    textTreatment: { type: Type.STRING },
+    avoid: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+    },
+  },
+  required: [
+    "modelRecommendation",
+    "visualGoal",
+    "composition",
+    "layout",
+    "background",
+    "productRole",
+    "textTreatment",
+    "avoid",
+  ],
+};
+
+export const criticSchema = {
+  type: Type.OBJECT,
+  properties: {
+    overallScore: { type: Type.NUMBER },
+    brandFit: { type: Type.NUMBER },
+    categoryFit: { type: Type.NUMBER },
+    clarity: { type: Type.NUMBER },
+    originality: { type: Type.NUMBER },
+    conversionReadiness: { type: Type.NUMBER },
+    aiSlopRisk: { type: Type.NUMBER },
+    verdict: { type: Type.STRING },
+    recommendedFix: { type: Type.STRING },
+    notes: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+    },
+  },
+  required: [
+    "overallScore",
+    "brandFit",
+    "categoryFit",
+    "clarity",
+    "originality",
+    "conversionReadiness",
+    "aiSlopRisk",
+    "verdict",
+    "recommendedFix",
+    "notes",
+  ],
+};

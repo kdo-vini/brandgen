@@ -1,24 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from './supabase';
+import { PLAN_LIMITS } from './planLimits';
+export { PLAN_LIMITS };
 
 // ─── Plan definitions ──────────────────────────────────────────────────────────
 
 export type SubscriptionPlan = 'free' | 'pro';
 export type SubscriptionStatus = 'active' | 'trialing' | 'past_due' | 'canceled' | 'inactive';
-
-export const PLAN_LIMITS = {
-  free: {
-    brands: 1,
-    textGenerationsPerMonth: 15,
-    imageGenerationsPerMonth: 3,
-  },
-  pro: {
-    brands: 3,
-    textGenerationsPerMonth: 150,
-    imageGenerationsPerMonth: 40,
-  },
-} as const;
 
 export type PlanLimits = typeof PLAN_LIMITS[SubscriptionPlan];
 

@@ -19,6 +19,19 @@ import {
 import AssetUploader from './AssetUploader';
 import PostHistory from './PostHistory';
 import TypographicCard from './TypographicCard';
+import { postTypes } from '../constants/postTypes';
+import {
+  formatOptions,
+  imageStyles,
+  imageModels,
+  imageSizes,
+  formatAspectRatios,
+  modelFriendlyName,
+  resolveImageModel,
+} from '../constants/imageGeneration';
+import { useGenerationProgress } from '../hooks/useGenerationProgress';
+import { useEditableFields } from '../hooks/useEditableFields';
+import type { EditableGeneratedField } from '../hooks/useEditableFields';
 
 type Props = {
   user: User;
@@ -32,101 +45,6 @@ type Props = {
 };
 
 type Tab = 'generate' | 'assets' | 'history';
-
-const postTypes: { id: string; label: string; visualHint: string }[] = [
-  // Consciência / topo de funil
-  { id: 'Dor do cliente', label: '😩 Dor do cliente', visualHint: 'Show a frustrated or overwhelmed person facing a recognizable problem. Use tension in the composition — darker tones, contrast lighting.' },
-  { id: 'Solução / produto', label: '✅ Solução / produto', visualHint: 'Showcase the product or service as the hero. Use bright, positive lighting and a clean composition that highlights the solution clearly.' },
-  { id: 'Lançamento', label: '🚀 Lançamento / novidade', visualHint: 'Create a dramatic, energetic visual with bold colors, explosive shapes or particles suggesting a launch. Use vibrant accent colors and dynamic composition.' },
-  { id: 'Oferta relâmpago', label: '⚡ Oferta relâmpago', visualHint: 'Create urgency with bold red, orange or yellow accents. Use visual elements like countdown or lightning bolt shapes. High contrast, immediately eye-catching.' },
-
-  // Confiança / meio de funil
-  { id: 'Prova social / depoimento', label: 'Prova social / depoimento', visualHint: 'Feature a close-up of a happy customer or a testimonial quote overlay. Warm, trustworthy color palette. Candid or portrait photography style.' },
-  { id: 'Bastidores / founder', label: 'Bastidores / founder story', visualHint: 'Show a real, behind-the-scenes moment — the founder working, a workspace, or a candid team shot. Authentic and relatable. Use warm, lifestyle photography tones.' },
-  { id: 'Comparação antes/depois', label: 'Antes e depois', visualHint: 'Split-screen or side-by-side composition showing contrast between the problem state and the result state. Strong visual contrast between the two halves.' },
-  { id: 'Número / resultado', label: 'Número / resultado', visualHint: 'Feature a large, bold statistic or result number as the focal point. Professional data-visualization style with brand colors.' },
-
-  // Engajamento / conexão
-  { id: 'Pergunta / enquete', label: 'Pergunta / enquete', visualHint: 'Use an intriguing visual that sparks curiosity. Minimalist background with a bold central question or thought. Inviting and conversational tone.' },
-  { id: 'Dica / tutorial', label: 'Dica / tutorial', visualHint: 'Clean educational layout with numbered steps or a visual tip. Use icons, arrows or callouts overlaid on a light or branded background.' },
-  { id: 'Mito vs. Verdade', label: 'Mito vs. Verdade', visualHint: 'Bold comparison visual with two contrasting sides — one with a red/negative tone for the myth, one with green/positive for the truth.' },
-  { id: 'Citação inspiracional', label: 'Citação inspiracional', visualHint: 'Elegant typographic quote design. Soft background with stylized typography as the hero. Optional: subtle bokeh or texture background.' },
-
-  // Conversão / fundo de funil
-  { id: 'CTA / oferta direta', label: 'CTA / oferta direta', visualHint: 'High-impact visual with a strong, direct call-to-action. Bold button-like elements or arrows pointing to the offer. Use the brand primary color prominently.' },
-  { id: 'Evento / webinar', label: 'Evento / webinar', visualHint: 'Professional event announcement design with date and time prominently featured. Polished, corporate aesthetic with brand colors and clean layout.' },
-];
-
-const formatOptions = [
-  {
-    id: 'Feed quadrado (1080x1080)',
-    label: 'Feed quadrado',
-    description: '1080 x 1080',
-  },
-  {
-    id: 'Story vertical (1080x1920)',
-    label: 'Story vertical',
-    description: '1080 x 1920',
-  },
-  {
-    id: 'Capa de Destaque (1080x1920, foco central)',
-    label: 'Capa de destaque',
-    description: '1080 x 1920',
-  },
-] as const;
-
-const imageStyles = [
-  'Post Profissional (Canva)',
-  'Fotográfico Realista',
-  'Dark Mode Premium (Escuro)',
-  'Gradiente Moderno',
-  'Minimalista (Clean)',
-  'Cinematográfico (Estúdio)',
-  'Neon / Futurista'
-];
-
-const formatAspectRatios: Record<string, string> = {
-  'Feed quadrado (1080x1080)': '1:1',
-  'Story vertical (1080x1920)': '9:16',
-  'Capa de Destaque (1080x1920, foco central)': '9:16',
-};
-const imageModels = [
-  { id: 'auto', name: 'Automático (Recomendado)', type: 'auto' },
-  { id: 'gemini-3-pro-image-preview', name: 'Nano Banana Pro', type: 'nanoBanana' },
-  { id: 'gemini-3.1-flash-image-preview', name: 'Nano Banana Flash', type: 'nanoBanana' },
-  { id: 'imagen-4.0-ultra-generate-001', name: 'Imagen 4 Ultra', type: 'imagen' },
-  { id: 'imagen-4.0-generate-001', name: 'Imagen 4', type: 'imagen' },
-  { id: 'imagen-4.0-fast-generate-001', name: 'Imagen 4 Fast', type: 'imagen' }
-];
-
-const modelFriendlyName: Record<string, string> = {
-  'gemini-3-pro-image-preview': 'Nano Banana Pro',
-  'gemini-3.1-flash-image-preview': 'Nano Banana Flash',
-  'imagen-4.0-ultra-generate-001': 'Imagen 4 Ultra',
-  'imagen-4.0-generate-001': 'Imagen 4',
-  'imagen-4.0-fast-generate-001': 'Imagen 4 Fast',
-};
-
-function resolveImageModel(
-  imageModelSetting: string,
-  hasAssets: boolean,
-  visualBriefRecommendation: 'imagen' | 'nanoBanana' | undefined,
-  imageStyle: string,
-): { id: string; type: 'imagen' | 'nanoBanana' } {
-  if (imageModelSetting !== 'auto') {
-    const found = imageModels.find(m => m.id === imageModelSetting);
-    return { id: imageModelSetting, type: (found?.type as 'imagen' | 'nanoBanana') || 'imagen' };
-  }
-  // Assets selecionados → edição real com Nano Banana
-  if (hasAssets) return { id: 'gemini-3-pro-image-preview', type: 'nanoBanana' };
-  // Visual brief recomendou nanoBanana
-  if (visualBriefRecommendation === 'nanoBanana') return { id: 'gemini-3-pro-image-preview', type: 'nanoBanana' };
-  // Estilos de alta fidelidade fotográfica → Imagen Ultra
-  if (/fotografico|cinemato/i.test(imageStyle)) return { id: 'imagen-4.0-ultra-generate-001', type: 'imagen' };
-  // Default: Imagen 4 balanceado
-  return { id: 'imagen-4.0-generate-001', type: 'imagen' };
-}
-const imageSizes = ["1K", "2K"];
 
 const toneLabels: Record<string, string> = {
   formal: 'Formal',
@@ -158,8 +76,6 @@ function formatEmojiStyleLabel(value?: string | null) {
 function looksLikeSchemaError(message?: string) {
   return /schema cache|column|Could not find/i.test(message || '');
 }
-
-type EditableGeneratedField = 'hook' | 'caption' | 'cta' | 'hashtags' | 'image_text' | 'image_prompt';
 
 type EditableFieldProps = {
   label: string;
@@ -254,16 +170,12 @@ export default function BrandDetail({ user, brand, subscription, usage, onBack, 
   const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
-  const [generationProgress, setGenerationProgress] = useState(0);
-  const [generationStep, setGenerationStep] = useState('');
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [isRescanning, setIsRescanning] = useState(false);
   const [editablePrompt, setEditablePrompt] = useState('');
   const [currentPostId, setCurrentPostId] = useState<string | null>(null);
   const [selectedTemplate, setSelectedTemplate] = useState(0);
   const [editedContent, setEditedContent] = useState<GeneratedContent | null>(null);
-  const [editingField, setEditingField] = useState<EditableGeneratedField | null>(null);
-  const [regeneratingField, setRegeneratingField] = useState<EditableGeneratedField | null>(null);
   const [availableAssets, setAvailableAssets] = useState<BrandAsset[]>([]);
   const [assetsLoading, setAssetsLoading] = useState(true);
   const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
@@ -271,8 +183,19 @@ export default function BrandDetail({ user, brand, subscription, usage, onBack, 
   const [advancedControlsOpen, setAdvancedControlsOpen] = useState(false);
   const [angleControlsOpen, setAngleControlsOpen] = useState(false);
   const [criticGateAcknowledged, setCriticGateAcknowledged] = useState(false);
-  const [humanEdits, setHumanEdits] = useState<Record<string, { original: string; edited: string; editedAt: string }>>({});
-  const [regenerationCounts, setRegenerationCounts] = useState<Record<string, number>>({});
+
+  const { generationProgress, generationStep } = useGenerationProgress(isGenerating);
+  const {
+    editingField,
+    setEditingField,
+    regeneratingField,
+    setRegeneratingField,
+    humanEdits,
+    regenerationCounts,
+    resetEdits,
+    trackFieldEdit,
+    trackRegeneration,
+  } = useEditableFields(generatedContent);
 
   const cardRef = useRef<HTMLDivElement>(null);
   const selectedModel = imageModels.find(model => model.id === imageModel);
@@ -408,13 +331,7 @@ export default function BrandDetail({ user, brand, subscription, usage, onBack, 
   };
 
   const saveFieldToHistory = (field: EditableGeneratedField, value: string) => {
-    const originalValue = (generatedContent?.[field as keyof GeneratedContent] as string) || '';
-    if (value !== originalValue) {
-      setHumanEdits(prev => ({
-        ...prev,
-        [field]: { original: originalValue, edited: value, editedAt: new Date().toISOString() },
-      }));
-    }
+    trackFieldEdit(field, value);
 
     setEditedContent(prev => {
       if (!prev) return prev;
@@ -450,46 +367,6 @@ export default function BrandDetail({ user, brand, subscription, usage, onBack, 
     });
   };
 
-  const GENERATION_STAGES = [
-    { pct: 12, msg: 'Estudando sua marca... 🧠', delay: 800 },
-    { pct: 28, msg: 'Definindo o ângulo do post... 💡', delay: 4500 },
-    { pct: 48, msg: 'Escrevendo o copy... ✍️', delay: 10000 },
-    { pct: 65, msg: 'Construindo o brief visual... 🎨', delay: 16000 },
-    { pct: 82, msg: 'O crítico tá avaliando o conteúdo... 🔍', delay: 22000 },
-    { pct: 92, msg: 'Finalizando os detalhes... ⚡', delay: 28000 },
-    { pct: 97, msg: 'Quase lá, segura mais um segundo... 🙏', delay: 35000 },
-  ];
-
-  useEffect(() => {
-    if (!isGenerating) {
-      setGenerationProgress(0);
-      setGenerationStep('');
-      return;
-    }
-    setGenerationProgress(0);
-    setGenerationStep(GENERATION_STAGES[0].msg);
-
-    const timers = GENERATION_STAGES.map(({ pct, msg, delay }) =>
-      setTimeout(() => {
-        setGenerationProgress(pct);
-        setGenerationStep(msg);
-      }, delay)
-    );
-
-    // Lógica para que a barra não pare completamente se demorar mais que o previsto
-    const creepInterval = setInterval(() => {
-      setGenerationProgress(prev => {
-        if (prev >= 99) return 99;
-        if (prev >= 97) return prev + 0.1; // Sobe bem devagarzinho no final
-        return prev;
-      });
-    }, 1000);
-
-    return () => {
-      timers.forEach(clearTimeout);
-      clearInterval(creepInterval);
-    };
-  }, [isGenerating]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleRescan = async () => {
     if (!brand.url) return;
@@ -545,8 +422,7 @@ export default function BrandDetail({ user, brand, subscription, usage, onBack, 
     setIsGenerating(true);
     setGeneratedImageUrl(null);
     setCurrentPostId(null);
-    setHumanEdits({});
-    setRegenerationCounts({});
+    resetEdits();
     setCriticGateAcknowledged(false);
 
     try {
@@ -562,6 +438,7 @@ export default function BrandDetail({ user, brand, subscription, usage, onBack, 
           imageModelType: selectedAssets.length > 0 ? 'nanoBanana' : 'imagen',
           marketerPreferences,
           selectedAssets: selectedAssets.map(({ id, url, filename, type }) => ({ id, url, filename, type })),
+          userId: user.id,
         })
       });
 
@@ -721,6 +598,7 @@ export default function BrandDetail({ user, brand, subscription, usage, onBack, 
           selectedAssets: selectedAssets.map(({ id, url, filename, type }) => ({ id, url, filename, type })),
           regenerateField: field,
           currentContent: editedContent,
+          userId: user.id,
         })
       });
 
@@ -739,7 +617,7 @@ export default function BrandDetail({ user, brand, subscription, usage, onBack, 
       const newContent: GeneratedContent = await res.json();
       const nextContent = { ...editedContent, [field]: newContent[field] };
       setEditedContent(nextContent);
-      setRegenerationCounts(prev => ({ ...prev, [field]: (prev[field] || 0) + 1 }));
+      trackRegeneration(field);
       if (field === 'image_prompt') setEditablePrompt(newContent[field]);
       if (currentPostId) {
         const imagePromptOverride = field === 'image_prompt'
